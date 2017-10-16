@@ -1,20 +1,3 @@
-# ERPmine - ERP for service industry
-# Copyright (C) 2011-2016  Adhi software pvt ltd
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
 class WkExpenseEntry < TimeEntry
   unloadable
   
@@ -38,7 +21,7 @@ class WkExpenseEntry < TimeEntry
   #hours function of TimeEntry(base class) is overrided to use amount column of WkExpenseEntry
   
   def validate_time_entry
-    errors.add :amount, :invalid if amount && (amount < 0 || amount >= 1000000)
+    errors.add :amount, :invalid if amount && (amount < 0 || amount >= 100000)
     errors.add :project_id, :invalid if project.nil?
     errors.add :issue_id, :invalid if (issue_id && !issue) || (issue && project!=issue.project)
   end  

@@ -1,27 +1,10 @@
-# ERPmine - ERP for service industry
-# Copyright (C) 2011-2016  Adhi software pvt ltd
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
-class WktimeController < WkbaseController
+class WktimeController < ApplicationController
 unloadable
 
 include WktimeHelper
 
 before_filter :require_login
-before_filter :check_perm_and_redirect, :only => [:edit, :update, :destroy] # user without edit permission can't destroy
+before_filter :check_perm_and_redirect, :only => [:edit, :update]
 before_filter :check_editperm_redirect, :only => [:destroy]
 before_filter :check_view_redirect, :only => [:index]
 before_filter :check_log_time_redirect, :only => [:new]
@@ -29,69 +12,90 @@ before_filter :check_log_time_redirect, :only => [:new]
 accept_api_auth :index, :edit, :update, :destroy, :deleteEntries
 
 helper :custom_fields
-helper :queries
-include QueriesHelper
  
-  def index	
-	user_custom_fields = CustomField.where(['is_filter = ? AND type = ?', true, "UserCustomField"])
-	@query = nil
-	unless user_custom_fields.blank?
-		@query = WkTimeEntryQuery.build_from_params(params, :project => nil, :name => '_')
-	end
+  def index
 	set_filter_session
     retrieve_date_range	
 	@from = getStartDay(@from)
 	@to = getEndDay(@to)
+	# Paginate results
+	#user_id = params[:user_id]
+	#group_id = params[:group_id]
 	if !params[:tab].blank? && params[:tab] =='wkexpense'
 		user_id = session[:wkexpense][:user_id]
 		group_id = session[:wkexpense][:group_id]
 		status = session[:wkexpense][:status]
-		userfilter = getValidUserCF(session[:wkexpense][:filters], user_custom_fields)
 	else
-		user_id = session[:wktimes][:user_id]
-		group_id = session[:wktimes][:group_id]
+		user_id = session[:wktimes][:user_id]#params[:user_id]
+		group_id = session[:wktimes][:group_id]#group_id = params[:group_id]
 		status = session[:wktimes][:status]
-		userfilter = getValidUserCF(session[:wktimes][:filters], user_custom_fields)
-	end
-	
-	unless userfilter.blank? || @query.blank?
-		@query.filters = userfilter
 	end
 	set_user_projects
 	if (!@manage_view_spenttime_projects.blank? && @manage_view_spenttime_projects.size > 0)
 		@selected_project = getSelectedProject(@manage_view_spenttime_projects, false)		 
 	end
 	setMembers
-	ids = nil
+	ids = nil		
 	if user_id.blank?
-		user_id = (@currentUser_loggable_projects.blank? && @view_spenttime_projects.blank?) ? '-1' : User.current.id.to_s
-		#user_id = @currentUser_loggable_projects.blank? ? '-1' : User.current.id.to_s
-	end
-	#if user_id.blank?
 		#ids = is_member_of_any_project() ? User.current.id.to_s : '0'
-	#	ids = User.current.id.to_s
-	#elsif user_id.to_i == 0
-	if user_id.to_i == 0
+		ids = User.current.id.to_s
+	elsif user_id.to_i == 0	
 		unless @members.blank?
-			@members.each_with_index do |users,i|
+			@members.each_with_index do |users,i|			
 				if i == 0
 					ids =  users[1].to_s
 				else
 					ids +=',' + users[1].to_s
 				end				
-			end			
-		end		
+			end	
+		end
 		ids = '0' if ids.nil?
-		setUserIdsInSession(ids) #set user ids in session if "All User" is chosen
 	else
 		ids = user_id 
 	end
+	
 	if @from.blank? && @to.blank?
-		getAllTimeRange(ids, true)
+		getAllTimeRange(ids)
 	end
-	teQuery = getTEQuery(@from, @to, ids)
-	query = getQuery(teQuery, ids, @from, @to, status)
-	findBySql(query)
+	
+	spField = getSpecificField()
+	entityNames = getEntityNames()	
+	teSelectStr = "select v1.user_id, v1.startday as spent_on, v1." + spField
+	wkSelectStr = teSelectStr + ", case when w.status is null then 'n' else w.status end as status "	
+	sqlStr = " from "
+	sDay = getDateSqlString('t.spent_on')
+	#Martin Dube contribution: 'start of the week' configuration
+	if ActiveRecord::Base.connection.adapter_name == 'SQLServer'	
+		wkSelectStr = wkSelectStr +", un.firstname + ' ' + un.lastname as status_updater "	
+		sqlStr += "(select  ROW_NUMBER() OVER (ORDER BY  " + sDay + " desc, user_id) AS rownum," + sDay + " as startday, "	
+		sqlStr += " t.user_id, sum(t." + spField + ") as " + spField + " ,max(t.id) as id" + " from " + entityNames[1] + " t, users u" +
+			" where u.id = t.user_id and u.id in (#{ids})"
+		sqlStr += " and t.spent_on between '#{@from}' and '#{@to}'" unless @from.blank? && @to.blank?	
+		sqlStr += " group by " + sDay + ", user_id ) as v1"
+	else
+		if ActiveRecord::Base.connection.adapter_name == 'SQLite'
+			wkSelectStr = wkSelectStr +", un.firstname || ' ' || un.lastname as status_updater "
+		else
+			wkSelectStr = wkSelectStr +", concat(un.firstname,' ' ,un.lastname) as status_updater "
+		end
+		sqlStr += "(select " + sDay + " as startday, "
+		sqlStr += " t.user_id, sum(t." + spField + ") as " + spField + " ,max(t.id) as id" + " from " + entityNames[1] + " t, users u" +
+			" where u.id = t.user_id and u.id in (#{ids})"
+		sqlStr += " and t.spent_on between '#{@from}' and '#{@to}'" unless @from.blank? && @to.blank?	
+		sqlStr += " group by startday, user_id order by startday desc, user_id ) as v1"
+		
+	end		
+
+	wkSqlStr = " left outer join " + entityNames[0] + " w on v1.startday = w.begin_date and v1.user_id = w.user_id left outer join users un on un.id = w.statusupdater_id"	
+	#status = params[:status]
+	#if !status.blank?
+	#	wkSqlStr += " WHERE w.status in ('#{status.join("','")}')" 
+	#	if status.include?('n')
+	#		wkSqlStr += " OR  w.status IS NULL"
+	#	end
+	#end
+	
+	findBySql(teSelectStr,sqlStr,wkSelectStr,wkSqlStr, status, ids)	
     respond_to do |format|
       format.html {        
         render :layout => !request.xhr?
@@ -108,32 +112,11 @@ include QueriesHelper
 	@editable = @wktime.nil? || @wktime.status == 'n' || @wktime.status == 'r'
 	hookPerm = call_hook(:controller_check_editable, {:editable => @editable, :user => @user})
 	@editable = hookPerm.blank? ? @editable : hookPerm[0]
-	#below two lines are hook code for lock TE
-	# hookPerm = call_hook(:controller_check_locked, {:startdate => @startday})
-	# @locked = hookPerm.blank? ? false : hookPerm[0]
-	@locked  = isLocked(@startday)
+	hookPerm = call_hook(:controller_check_locked, {:startdate => @startday})
+	@locked = hookPerm.blank? ? false : hookPerm[0]
 	@editable = false if @locked
 	set_edit_time_logs
 	@entries = findEntries()
-	if !$tempEntries.blank?
-		newEntries = $tempEntries - @entries
-		if !newEntries.blank?
-			$tempEntries = $tempEntries - newEntries
-			newEntries.each do |entry|
-				entry.id = ""
-				$tempEntries << entry
-			end
-		end
-	end
-	isError = params[:isError].blank? ? false : to_boolean(params[:isError])
-	if (!$tempEntries.blank? && isError)
-		@entries.each do |entry|	
-			if !entry.editable_by?(User.current) && !isAccountUser && !isBilledTimeEntry(entry)
-				$tempEntries << entry
-			end
-		end
-		@entries = $tempEntries
-	end
 	set_project_issues(@entries)
 	if @entries.blank? && !params[:prev_template].blank?
 		@prev_entries = prevTemplate(@user.id)
@@ -158,7 +141,6 @@ include QueriesHelper
 	@wktime = nil
 	errorMsg = nil
 	respMsg = nil	
-	wkattendance = nil
 	findWkTE(@startday)	
 	@wktime = getWkEntity if @wktime.nil?
 	allowApprove = false
@@ -177,7 +159,7 @@ include QueriesHelper
 	cvParams = wktimeParams[:custom_field_values] unless wktimeParams.blank?	
 	useApprovalSystem = (!Setting.plugin_redmine_wktime['wktime_use_approval_system'].blank? &&
 							Setting.plugin_redmine_wktime['wktime_use_approval_system'].to_i == 1)
-							
+						
 	@wktime.transaction do
 		begin				
 			if errorMsg.blank? && (!params[:wktime_save].blank? || !params[:wktime_save_continue].blank? ||
@@ -186,28 +168,30 @@ include QueriesHelper
 					@wktime.status = :n
 					# save each entry
 					entrycount=0
-					entrynilcount=0	
-					@entries.each do |entry|			
+					entrynilcount=0
+					@entries.each do |entry|					
 						entrycount += 1
 						entrynilcount += 1 if (entry.hours).blank?
 						allowSave = true
 						if (!entry.id.blank? && !entry.editable_by?(User.current))
 							allowSave = false
 						end
-						allowSave = true if (to_boolean(@edittimelogs) || isAccountUser || !isBilledTimeEntry(entry))
-						#if !((Setting.plugin_redmine_wktime['wktime_allow_blank_issue'].blank? ||
-						#		Setting.plugin_redmine_wktime['wktime_allow_blank_issue'].to_i == 0) && 
-						#		entry.issue.blank?)
+						if to_boolean(@edittimelogs)
+							allowSave = true
+						end
+						if !((Setting.plugin_redmine_wktime['wktime_allow_blank_issue'].blank? ||
+								Setting.plugin_redmine_wktime['wktime_allow_blank_issue'].to_i == 0) && 
+								entry.issue.blank?)
 							if allowSave
 								errorMsg = updateEntry(entry) 
 							else
 								errorMsg = l(:error_not_permitted_save) if !api_request?
 							end
 							break unless errorMsg.blank?
-						#else
-						#	errorMsg = "#{l(:field_issue)} #{l('activerecord.errors.messages.blank')} "
-						#	break unless errorMsg.blank?
-						#end
+						else
+							errorMsg = "#{l(:field_issue)} #{l('activerecord.errors.messages.blank')} "
+							break unless errorMsg.blank?
+						end
 					end				
 					if !params[:wktime_submit].blank? && useApprovalSystem 
 						@wktime.submitted_on = Date.today
@@ -247,9 +231,7 @@ include QueriesHelper
 				elsif !params[:wktime_unapprove].blank? && !@wktime.nil? && @wktime.status == 'a' && allowApprove
 					errorMsg = updateStatus(:s)
 				elsif !params[:wktime_submit].blank? && !@wktime.nil? && ( @wktime.status == 'n' || @wktime.status == 'r')	
-					#if TE sheet is read only mode with submit button		
-					@wktime.submitted_on = Date.today
-					@wktime.submitter_id = User.current.id							
+					#if TE sheet is read only mode with submit button				
 					if !Setting.plugin_redmine_wktime['wktime_uuto_approve'].blank? &&
 						Setting.plugin_redmine_wktime['wktime_uuto_approve'].to_i == 1
 						errorMsg = updateStatus(:a)
@@ -280,7 +262,6 @@ include QueriesHelper
 		format.html {
 			if errorMsg.nil?
 				flash[:notice] = respMsg
-				$tempEntries = nil
 				#redirect_back_or_default :action => 'index'
 				#redirect_to :action => 'index' , :tab => params[:tab]
                 if params[:wktime_save_continue] 
@@ -290,12 +271,11 @@ include QueriesHelper
 				end 
 			else
 				flash[:error] = respMsg
-				$tempEntries = @entries
 				if !params[:enter_issue_id].blank? && params[:enter_issue_id].to_i == 1					
-				redirect_to :action => 'edit', :user_id => params[:user_id], :startday => @startday, :isError => true,
+				redirect_to :action => 'edit', :user_id => params[:user_id], :startday => @startday,
 				:enter_issue_id => 1	
 				else
-					redirect_to :action => 'edit', :user_id => params[:user_id], :startday => @startday, :isError => true
+					redirect_to :action => 'edit', :user_id => params[:user_id], :startday => @startday
 				end
 			end
 		}
@@ -359,10 +339,8 @@ include QueriesHelper
 		setup
 		#cond = getCondition('spent_on', @user.id, @startday, @startday+6)
 		#TimeEntry.delete_all(cond)
-		#below two lines are hook code for lock TE
-		#hookPerm = call_hook(:controller_check_locked, {:startdate => @startday})
-		#locked = hookPerm.blank? ? false : hookPerm[0]
-		locked  = isLocked(@startday)
+		hookPerm = call_hook(:controller_check_locked, {:startdate => @startday})
+		locked = hookPerm.blank? ? false : hookPerm[0]
 		findWkTE(@startday)	
 		if locked
 			flash[:error] = l(:error_time_entry_delete)
@@ -517,7 +495,7 @@ include QueriesHelper
 		end
 		actStr =""
 		project.activities.each do |a|
-			actStr << project_id.to_s() + '|' + a.id.to_s() + '|' + a.is_default.to_s() + '|' + a.name + "\n"
+			actStr << project_id.to_s() + '|' + a.id.to_s() + '|' + a.name + "\n"
 		end
 	
 		respond_to do |format|
@@ -601,9 +579,8 @@ include QueriesHelper
 	end
 	
 	def showWorktimeHeader
-		(!Setting.plugin_redmine_wktime['wktime_work_time_header'].blank? &&
-		Setting.plugin_redmine_wktime['wktime_work_time_header'].to_i == 1) && (!Setting.plugin_redmine_wktime['wktime_enable_clock_in_out'].blank? &&
-		Setting.plugin_redmine_wktime['wktime_enable_clock_in_out'].to_i == 1) && (!Setting.plugin_redmine_wktime['wktime_enable_attendance_module'].blank? && Setting.plugin_redmine_wktime['wktime_enable_attendance_module'].to_i == 1 )
+		!Setting.plugin_redmine_wktime['wktime_work_time_header'].blank? &&
+		Setting.plugin_redmine_wktime['wktime_work_time_header'].to_i == 1
 	end
 	
 	def enterCommentInRow
@@ -639,12 +616,8 @@ include QueriesHelper
 		html_hours(l_hours(total))
 	end
 	
-	 def getStatus
-		if !params[:startDate].blank?
-			status = getTimeEntryStatus(params[:startDate].to_date,params[:user_id])
-		else
-			status = nil
-		end
+	 def getStatus	
+		status = getTimeEntryStatus(params[:startDate].to_date,params[:user_id])
 		respond_to do |format|
 			format.text  { render :text => status }
 		end	
@@ -696,7 +669,6 @@ include QueriesHelper
 		if !hookPerm.blank?
 			ret = hookPerm[0]
 		end
-		ret = true if isAccountUser
 		ret = ((ret || !te_projects.blank?) && (@user.id != User.current.id || (!Setting.plugin_redmine_wktime[:wktime_own_approval].blank? && 
 							Setting.plugin_redmine_wktime[:wktime_own_approval].to_i == 1 )))? true: false
 		
@@ -726,346 +698,7 @@ include QueriesHelper
 		end
 		ret
 	end
-	
-	def getTracker
-		ret = false;
-		tracker = getTrackerbyIssue(params[:issue_id])
-		settingstracker = Setting.plugin_redmine_wktime[getTFSettingName()]
-		allowtracker = Setting.plugin_redmine_wktime['wktime_allow_user_filter_tracker'].to_i
-		if settingstracker != ["0"]
-			if ((settingstracker.include?("#{tracker}")) || (tracker == '0'))
-				ret = true
-			end			
-		else
-			ret = true
-		end	
-		
-		if allowtracker == 1
-		ret = true
-		end
-		
-		respond_to do |format|
-			format.text  { render :text => ret }
-		end	
-	end
-	
-	def sendSubReminderEmail
-		userList = ""
-		weekHash = Hash.new
-		userHash = Hash.new
-		mngrHash = Hash.new
-		respMsg = "OK"
-		allowedStatus = ['e','r','n'];
-		pStatus = getStatusFromSession #params[:status].split(',')
-		status = pStatus.blank? ? allowedStatus : (allowedStatus & pStatus)
-		wkentries = nil
-		if !status.blank?
-			ids = getUserIds
-			setUserCFQuery
-			label_te = getTELabel
-			teQuery = getTEQuery(params[:from].to_date, params[:to].to_date, ids)
-			query = getQuery(teQuery, ids, params[:from].to_date, params[:to].to_date, status) #['e','r','n']
-						
-			wkentries = findTEEntryBySql(query)			
-			wkentries.each do |entries|
-				user = entries.user
-				if !userHash.has_key?(user.id)
-					userHash[user.id] = user
-					weekHash[user.id] = [entries.spent_on]
-					hookMgr = call_hook(:controller_get_manager, {:user => user, :approver => false})
-					mngrArr = hookMgr.blank? ? nil : hookMgr[0]
-					mngrHash[user.id] = mngrArr
-				else
-					weekArr = weekHash[user.id]
-					weekHash[user.id] = weekArr << entries.spent_on
-				end
-			end
-			userHash.each_key do |key|
-				user = userHash[key]
-				errMsg = ""
-				begin
-					WkMailer.submissionReminder(user, mngrHash[key], weekHash[key], params[:email_notes], label_te).deliver
-				rescue Exception => e
-					errMsg = e.message
-				end
-				userList += user.name + "\n" if errMsg.blank?
-			end
-			WkMailer.sendConfirmationMail(userList, true, label_te).deliver if !userList.blank?
-		end
-		respMsg = l(:text_wk_no_reminder) if (wkentries.blank? || (!wkentries.blank? && wkentries.size == 0))
-		respond_to do |format|
-			format.text  { render :text => respMsg }
-		end
-	end
-	
-	def sendApprReminderEmail		
-		mgrList = ""
-		userHash = Hash.new
-		mgrHash = Hash.new		
-		respMsg = "OK"
-		allowedStatus = ['s'];
-		pStatus = getStatusFromSession
-		status = pStatus.blank? ? allowedStatus : (allowedStatus & pStatus)
-		users = nil
-		if !status.blank?
-			entityNames = getEntityNames
-			ids = getUserIds
-			setUserCFQuery
-			label_te = getTELabel
-			user_cf_sql = @query.user_cf_statement('u') if !@query.blank?
-			queryStr = "select distinct u.* from users u " +
-						"left outer join #{entityNames[0]} w on u.id = w.user_id " +
-						"and (w.begin_date between '#{params[:from]}' and '#{params[:to]}') " #+
-						#"where u.id in (#{ids}) and w.status = 's'"
-			queryStr += " #{user_cf_sql} " if !user_cf_sql.blank?
-			queryStr += (!user_cf_sql.blank? ? " AND " : " WHERE ") + " u.id in (#{ids}) and w.status = 's' "
-						
-			users = User.find_by_sql(queryStr)			
-			users.each do |user|
-				mngrArr = getManager(user, true)			
-				if !mngrArr.blank?
-					mngrArr.each do |m|
-						userArr = []
-						if mgrHash.has_key?(m.id)
-							userArr = userHash[m.id]
-							userHash[m.id] = userArr << user
-						else						
-							mgrHash[m.id] = m
-							userHash[m.id] = [user]
-						end
-					end
-				end			
-			end
-			if !mgrHash.blank?			
-				mgrHash.each_key do |key|
-					userList = []
-					subOrd = userHash[key]
-					subOrd.each do |user|
-						userList << user.name
-					end
-					errMsg = ""
-					begin
-						WkMailer.approvalReminder(mgrHash[key], userList.uniq.join("\n"), params[:email_notes], label_te).deliver
-					rescue Exception => e
-						errMsg = e.message
-					end
-					mgrList += mgrHash[key].name + "\n" if errMsg.blank?
-				end		
-				WkMailer.sendConfirmationMail(mgrList, false, label_te).deliver if !mgrList.blank?			
-			end
-		end
-		respMsg = l(:text_wk_no_reminder) if (users.blank? || (!users.blank? && users.size == 0))
-		respond_to do |format|
-			format.text  { render :text => respMsg }
-		end
-	end
-	
-	def updateAttendance		
-		paramvalues = Array.new
-		entryvalues = Array.new
-		ret = ""
-		count = 0
-		oldendvalue = ""
-		paramvalues = params[:editvalue].split(',')	
-		if (params[:nightshift] == "false")
-			count = 1
-		end
-		for i in 0..paramvalues.length-1
-			entryvalues = paramvalues[i].split('|')
-			begin
-			if !entryvalues[0].blank? #&& isAccountUser    
-				wkattendance =  WkAttendance.find(entryvalues[0])
-				entrydate = wkattendance.start_time
-				start_local = entrydate.localtime
-				starttime = start_local.change({ hour: entryvalues[1].to_time.strftime("%H"), min: entryvalues[1].to_time.strftime("%M"), sec: entryvalues[1].to_time.strftime("%S") })
-				oldendvalue = entryvalues[2]
-				if (params[:nightshift] == "true")
-					entryvalues[2] = "23:59"
-				end
-				if !entryvalues[2].blank?
-					endtime = start_local.change({ hour: entryvalues[2].to_time.strftime("%H"), min: entryvalues[2].to_time.strftime("%M"), sec: entryvalues[2].to_time.strftime("%S") })
-				end
-				wkattendance.start_time = starttime
-				wkattendance.end_time = endtime 
-				wkattendance.hours = computeWorkedHours(starttime, endtime, true)#entryvalues[3] 
-				entryvalues[0] = params[:nightshift] ? '' : entryvalues[0]
-			else
-				wkattendance = WkAttendance.new
-				@startday = Date.parse params[:startdate]
-				if(params[:nightshift] == "true")
-					entryvalues[1] = entryvalues[5]
-					entryvalues[2] = "00:00"
-					entryvalues[3] = oldendvalue										
-				end
-				entrydate = @startday  +  ((entryvalues[1].to_i)- 1) #to_boolean(params[:isdate]) ? params[:startdate] : @startday  +  ((entryvalues[1].to_i)- 1)
-				wkattendance.user_id = params[:user_id].to_i 				
-				wkattendance.start_time = !entryvalues[2].blank? ? Time.parse("#{entrydate.to_s} #{ entryvalues[2].to_s}:00 ").localtime.to_s : '00:00'
-				if !entryvalues[3].blank?
-					wkattendance.end_time = Time.parse("#{entrydate.to_s} #{ entryvalues[3].to_s}:00 ").localtime.to_s
-					wkattendance.hours = computeWorkedHours(wkattendance.start_time , wkattendance.end_time, true)#entryvalues[4]
-				end
-				ret += '|'
-				ret += entryvalues[1].to_s
-				ret += ','
-				count = 1
-			end		
-			#wkattendance.save()
-			if(((wkattendance.start_time.localtime).to_formatted_s(:time)).to_s == "00:00" && ((wkattendance.end_time.localtime).to_formatted_s(:time)).to_s == "00:00" && wkattendance.id != nil)
-				wkattendance.destroy()				
-			else		
-				wkattendance.save()				
-			end
-			end until count == 1
-			ret += wkattendance.id.to_s
-			ret += ','
-			ret += ((wkattendance.start_time.localtime).to_formatted_s(:time)).to_s
-			ret += ','
-			ret += !((wkattendance.end_time)).blank? ?  ((wkattendance.end_time.localtime).to_formatted_s(:time)).to_s : '00:00'
-		end
-		respond_to do |format|
-			format.text  { render :text => ret }
-		end
-	end
-	
-	def findAttnEntries
-		dateStr = getConvertDateStr('start_time')
-		WkAttendance.where(" user_id = '#{params[:user_id]}' and #{dateStr} between '#{@startday}'  and '#{@startday + 6}' ").order("start_time")
-	end
-	
-	def getTotalBreakTime	
-		breakTimes = Setting.plugin_redmine_wktime['wktime_break_time']
-		totalBT = 0
-		if !breakTimes.blank?
-			breakTimes.each do |bt|
-				from_hr = bt.split('|')[0].strip
-				from_min = bt.split('|')[1].strip
-				to_hr = bt.split('|')[2].strip
-				to_min = bt.split('|')[3].strip
-				totalBT += (to_hr.to_i * 60 + to_min.to_i ) - (from_hr.to_i * 60 + from_min.to_i )			
-			end
-		end		
-		if totalBT > 0
-			totalBT = (totalBT/60.0)
-		end		
-		totalBT
-	end
-	
-	def time_rpt
-		@user = (session[:wkreport][:user_id].blank? || (session[:wkreport][:user_id]).to_i < 1) ? User.current : User.find(session[:wkreport][:user_id])
-		#@user = User.find(session[:wkreport][:user_id].blank? ? User.current.id : session[:wkreport][:user_id])#User.current
-		@startday = getStartDay((session[:wkreport][:from]).to_s.to_date)
-		#@entries = findEntries()
-		
-		render :action => 'time_rpt', :layout => false
-	end	
-	
-		############ Moved from private ##############
-		
-	def findEntries
-		setup	
-		cond = getCondition('spent_on', @user.id, @startday, @startday+6)		
-		findEntriesByCond(cond)
-	end
-	
-	def getNewCustomField
-		TimeEntry.new.custom_field_values
-	end	
-	
-	def getTELabel
-		l(:label_wk_timesheet)
-	end
-	
-	############ Moved from private ##############
-	
-	def showClockInOut
-		(!Setting.plugin_redmine_wktime['wktime_enable_clock_in_out'].blank? &&
-		Setting.plugin_redmine_wktime['wktime_enable_clock_in_out'].to_i == 1) && (!Setting.plugin_redmine_wktime['wktime_enable_attendance_module'].blank? && Setting.plugin_redmine_wktime['wktime_enable_attendance_module'].to_i == 1 ) && showWorktimeHeader
-	end
-	
-	def maxHourPerWeek
-		Setting.plugin_redmine_wktime['wktime_restr_max_hour_week'].to_i == 1 ?  
-		(Setting.plugin_redmine_wktime['wktime_max_hour_week'].blank? ? 0 : Setting.plugin_redmine_wktime['wktime_max_hour_week']) : 0
-	end
-	
-	def minHourPerWeek
-		Setting.plugin_redmine_wktime['wktime_restr_min_hour_week'].to_i == 1 ?  
-		(Setting.plugin_redmine_wktime['wktime_min_hour_week'].blank? ? 0 : Setting.plugin_redmine_wktime['wktime_min_hour_week']) : 0
-	end
-	
-	def lockte
-		@lock = WkTeLock.order(id: :desc)
-		render :action => 'lockte'
-	end
-	
-	 def lockupdate		
-		telock = WkTeLock.new 
-		telock.lock_date= params[:lock_date]
-		telock.locked_by =User.current.id	
-		errorMsg =nil			
-		if !telock.save()
-			errorMsg = telock.errors.full_messages.join('\n')
-		end
-		if errorMsg.nil?	
-			redirect_to :controller => 'wktime',:action => 'index' 
-			flash[:notice] = l(:notice_successful_update)
-		else
-			flash[:error] = errorMsg
-			redirect_to :action => 'new'
-		end		
-	 end
-	
 private
-	
-	def getManager(user, approver)
-		hookMgr = call_hook(:controller_get_manager, {:user => user, :approver => approver})
-		mngrArr = [] #nil
-		if !hookMgr.blank?
-			mngrArr = hookMgr[0] if !hookMgr[0].blank?
-		else
-			#includeAppr = (!Setting.plugin_redmine_wktime[:wktime_own_approval].blank? && Setting.plugin_redmine_wktime[:wktime_own_approval].to_i == 1 )
-			apprPerm = "and r.permissions like '%approve_time_entries%'"
-			queryStr = "select distinct u.* from projects p" +
-					" inner join members m on p.id = m.project_id and p.status = 1 " +
-					#" #{!includeAppr ? ('and m.user_id <> ' + user.id.to_s) : ''}" +
-					" inner join member_roles mr on m.id = mr.member_id" +
-					" inner join roles r on mr.role_id = r.id and (r.permissions like '%edit_time_entries%' " +
-					" #{approver ? apprPerm : ''}" + ')' +
-					" inner join users u on m.user_id = u.id" +
-					" inner join members m1 on p.id = m1.project_id and m1.user_id = #{user.id}"
-			
-			mngrs = User.find_by_sql(queryStr)
-			mngrs.each do |m|
-				mngrArr << m				
-			end
-		end
-		mngrArr
-	end
-	
-	def setUserCFQuery
-		userfilters = getUserCFFromSession
-		user_custom_fields = CustomField.where(['is_filter = ? AND type = ?', true, "UserCustomField"])
-		@query = nil
-		unless user_custom_fields.blank?
-			@query = WkTimeEntryQuery.build_from_params(params, :project => nil, :name => '_')
-			@query.filters = userfilters if !@query.blank?
-		end
-	end
-	
-	def getUserIds		
-		user_id = getUserIdFromSession
-		label_te = getTELabel
-
-		ids = nil		
-		if user_id.blank?
-			ids = User.current.id.to_s
-		elsif user_id.to_i == 0
-			ids = getUserIdsFromSession
-			ids = '0' if ids.nil?
-		else
-			ids = user_id 
-		end
-		ids
-	end
 
 
 	def check_permission
@@ -1075,7 +708,7 @@ private
 		status = getTimeEntryStatus(@startday, @user_id)
 		approve_projects = @approvable_projects & @logtime_projects
 		if (status != 'n' && (!approve_projects.blank? && approve_projects.size > 0))
-			#for approver
+			#for approver			
 			ret = true
 		else
 			if !@manage_projects.blank? && @manage_projects.size > 0
@@ -1093,7 +726,7 @@ private
 		if	!editPermission.blank? 
 			ret = editPermission[0] || (@user.id == User.current.id && @logtime_projects.size > 0)
 		end
-		return (ret || isAccountUser)
+		return ret		
 	end
 	
 	def getGrpMembers
@@ -1133,10 +766,21 @@ private
 			[ date_field + ' BETWEEN ? AND ? AND user_id = ?', start_date, end_date, user_id]
 		end
 		return cond
-	end		
+	end	
+	
+	#change the date to a last day of week
+	def getEndDay(date)
+		start_of_week = getStartOfWeek
+		#Martin Dube contribution: 'start of the week' configuration
+		unless date.nil?
+			daylast_diff = (6 + start_of_week) - date.wday
+			date += (daylast_diff%7)
+		end
+		date
+	end
 	
 	def prevTemplate(user_id)	
-		prev_entries = nil
+		prev_entries = nil		
 		noOfWeek = Setting.plugin_redmine_wktime['wktime_previous_template_week']
 		
 		if !noOfWeek.blank?
@@ -1197,7 +841,6 @@ private
 								teEntry.attributes = entry
 								# since project_id and user_id is protected
 								teEntry.project_id = entry['project_id']
-								teEntry.issue_id = nil if entry['issue_id'].blank?
 								teEntry.user_id = @user.id
 								teEntry.spent_on = @startday + k
 								#for one comment, it will be automatically loaded into the object
@@ -1207,8 +850,8 @@ private
 								end
 								#timeEntry.hours = hours[j].blank? ? nil : hours[j].to_f
 								#to allow for internationalization on decimal separator
-								setValueForSpField(teEntry,hours[j],decimal_separator,entry)
-								#teEntry.hours = hours[j].blank? ? nil : hours[j]#.to_f
+								#setValueForSpField(teEntry,hours[j],decimal_separator,entry)
+								teEntry.hours = hours[j].blank? ? nil : hours[j]#.to_f
 								
 								unless custom_fields.blank?
 									teEntry.custom_field_values.each do |custom_value|
@@ -1221,8 +864,8 @@ private
 											Setting.plugin_redmine_wktime['wktime_enter_cf_in_row2'].to_i == custom_field.id))
 											if use_detail_popup
 												cvs = custom_values[custom_field.id]
-												#custom_value.value = cvs[k].blank? ? nil : (custom_field.multiple? ? cvs[k].split(',') : cvs[k])	
-												teEntry.custom_field_values = {custom_field.id => cvs[k].blank? ? nil : (custom_field.multiple? ? cvs[k].split(',') : cvs[k])}
+												custom_value.value = cvs[k].blank? ? nil : 
+												custom_field.multiple? ? cvs[k].split(',') : cvs[k]	
 											end
 										end
 									end
@@ -1333,6 +976,12 @@ private
 		errorMsg
 	end
 	
+	def findEntries
+		setup	
+		cond = getCondition('spent_on', @user.id, @startday, @startday+6)		
+		findEntriesByCond(cond)
+	end
+	
 	def findWkTE(start_date, end_date=nil)
 		setup
 		cond = getCondition('begin_date', @user.nil? ? nil : @user.id, start_date, end_date)
@@ -1363,15 +1012,7 @@ private
   
   def user_allowed_to?(privilege, entity)
 	setup
-	hookPerm = call_hook(:controller_check_permission, {:params => params})
-	allow = false
-	if !hookPerm.blank? && (@user != User.current)
-		allow = hookPerm[0]
-	else
-		allow = User.current.allowed_to?(privilege, entity)
-	end
-	#return @user.allowed_to?(privilege, entity)
-	return allow
+	return @user.allowed_to?(privilege, entity)
   end
   
   def can_log_time?(project_id)
@@ -1395,7 +1036,7 @@ private
     def check_editperm_redirect
 		hookPerm = call_hook(:controller_edit_timelog_permission, {:params => params})
 		if !hookPerm.blank?
-			allow = hookPerm[0] || (check_editPermission && @user.id == User.current.id) || isAccountUser
+			allow = hookPerm[0] || (check_editPermission && @user.id == User.current.id)
 		else
 			allow = check_editPermission
 		end
@@ -1406,8 +1047,7 @@ private
 	end
   
     def check_editPermission
-		allowed = true
-		hasBilledEntry = false
+		allowed = true;
 		if api_request?
 			ids = gatherIDs			
 		else
@@ -1421,16 +1061,11 @@ private
 			@entries = findEntriesByCond(cond)
 		end
 		@entries.each do |entry|
-			if isBilledTimeEntry(entry)
-				hasBilledEntry = true
+			if(!entry.editable_by?(User.current))
 				allowed = false
 				break
 			end
-			if(!entry.editable_by?(User.current)) 
-				allowed = false
-			end
 		end
-		allowed = true if isAccountUser && !hasBilledEntry
 		return allowed
 	end
 	
@@ -1449,32 +1084,8 @@ private
 			#if id is there it should be update otherwise create
 			#the UI disables editing of
 			if can_log_time?(entry.project_id) || to_boolean(@edittimelogs)
-				issueId = entry.issue_id
-				if entry.issue_id == -1					
-					entry.issue_id = ''
-				end
-				
-				activityId = entry.activity_id
-				if entry.activity_id == -1					
-					entry.activity_id = ''
-				end
-			
-				if ((Setting.plugin_redmine_wktime['wktime_allow_blank_issue'].blank? ||
-						Setting.plugin_redmine_wktime['wktime_allow_blank_issue'].to_i == 0) && 
-						entry.issue.blank?)
-					errorMsg = "#{l(:field_issue)} #{l('activerecord.errors.messages.blank')} "
-				end
 				if !entry.save()
-					errorMsg = errorMsg.blank? ? entry.errors.full_messages : entry.errors.full_messages.unshift(errorMsg)
-					errorMsg = errorMsg.join("<br>")
-				end
-				
-				if issueId == -1
-					entry.issue_id = -1
-				end
-				
-				if activityId == -1
-					entry.activity_id = -1
+					errorMsg = entry.errors.full_messages.join('\n')
 				end
 			else
 				errorMsg = l(:error_not_permitted_save)
@@ -1500,7 +1111,7 @@ private
 		errorMsg = nil
 		if @wktimes.blank? 
 			errorMsg = l(:error_wktime_save_nothing)
-		else					
+		else	
 			@wktime.statusupdater_id = User.current.id
 			@wktime.statusupdate_on = Date.today
 			@wktime.status = status
@@ -1652,11 +1263,7 @@ private
 		if !mng_projects.blank?
 			@manage_projects = mng_projects[0].blank? ? nil : mng_projects[0]
 		else
-			if isAccountUser
-				@manage_projects = getAccountUserProjects
-			else
-				@manage_projects ||= Project.where(Project.allowed_to_condition(User.current, :edit_time_entries)).order('name')
-			end
+			@manage_projects ||= Project.where(Project.allowed_to_condition(User.current, :edit_time_entries)).order('name')
 		end		
 		@manage_projects =	setTEProjects(@manage_projects)	
 		
@@ -1667,10 +1274,11 @@ private
 			@manage_view_spenttime_projects = view_projects[0].blank? ? nil : view_projects[0]
 		else
 			if isAccountUser
+				#@manage_view_spenttime_projects = Project.all
 				@manage_view_spenttime_projects = getAccountUserProjects
 			else
-				@view_spenttime_projects ||= Project.where(Project.allowed_to_condition(User.current, :view_time_entries)).order('name')
-				@manage_view_spenttime_projects = @manage_projects & @view_spenttime_projects
+				view_spenttime_projects ||= Project.where(Project.allowed_to_condition(User.current, :view_time_entries)).order('name')
+				@manage_view_spenttime_projects = @manage_projects & view_spenttime_projects
 			end
 		end
 		@manage_view_spenttime_projects = setTEProjects(@manage_view_spenttime_projects)
@@ -1689,24 +1297,10 @@ private
 			u_id = params[:user_id]
 		end
 		if !u_id.blank?	&& u_id.to_i != 0
-			@user ||= User.find(u_id)
-			if User.current == @user
-				@logtime_projects ||= Project.where(Project.allowed_to_condition(@user, :log_time)).order('name')
-			else
-				hookProjs = call_hook(:controller_get_permissible_projs, {:user => @user})
-				if !hookProjs.blank?	
-					@logtime_projects = hookProjs[0].blank? ? [] : hookProjs[0]
-				else
-					user_projects ||= Project
-					.joins("INNER JOIN #{EnabledModule.table_name} ON projects.id = enabled_modules.project_id and enabled_modules.name='time_tracking'")
-					.joins("INNER JOIN #{Member.table_name} ON projects.id = members.project_id")				
-					.where("#{Member.table_name}.user_id = #{@user.id} AND #{Project.table_name}.status = #{Project::STATUS_ACTIVE}")
-					logtime_projects ||= Project.where(Project.allowed_to_condition(@user, :log_time)).order('name')
-					@logtime_projects = logtime_projects | user_projects
-				end
-			end
-			#@logtime_projects = @logtime_projects & @manage_projects if !@manage_projects.blank?
-			@logtime_projects = setTEProjects(@logtime_projects)
+			@user ||= User.find(u_id)	
+			#@logtime_projects ||= Project.find(:all, :order => 'name', :conditions => Project.allowed_to_condition(@user, :log_time))
+			@logtime_projects ||= Project.where(Project.allowed_to_condition(@user, :log_time)).order('name')			
+			@logtime_projects = setTEProjects(@logtime_projects)			
 		end
 	end
 	
@@ -1772,87 +1366,49 @@ private
 		["#{Wktime.table_name}", "#{TimeEntry.table_name}"]
 	end
 	
-	def getTEQuery(from, to, ids)
-		spField = getSpecificField()
-		entityNames = getEntityNames()	
-		teSelectStr = "select v1.user_id, v1.startday as spent_on, v1." + spField
-		wkSelectStr = teSelectStr + ", case when w.status is null then 'n' else w.status end as status "	
-		sqlStr = " from "
-		sDay = getDateSqlString('t.spent_on')
-		#Martin Dube contribution: 'start of the week' configuration
-		if ActiveRecord::Base.connection.adapter_name == 'SQLServer'	
-			wkSelectStr = wkSelectStr +", un.firstname + ' ' + un.lastname as status_updater "	
-			sqlStr += "(select " + sDay + " as startday, "	
-			sqlStr += " t.user_id, sum(t." + spField + ") as " + spField + " ,max(t.id) as id" + " from " + entityNames[1] + " t, users u" +
-				" where u.id = t.user_id and u.id in (#{ids})"
-			sqlStr += " and t.spent_on between '#{from}' and '#{to}'" unless from.blank? && to.blank?	
-			sqlStr += " group by " + sDay + ", user_id ) as v1"
-		else
-			if ActiveRecord::Base.connection.adapter_name == 'SQLite'
-				wkSelectStr = wkSelectStr +", un.firstname || ' ' || un.lastname as status_updater "
-			else
-				wkSelectStr = wkSelectStr +", concat(un.firstname,' ' ,un.lastname) as status_updater "
-			end
-			sqlStr += "(select " + sDay + " as startday, "
-			sqlStr += " t.user_id, sum(t." + spField + ") as " + spField + " ,max(t.id) as id" + " from " + entityNames[1] + " t, users u" +
-				" where u.id = t.user_id and u.id in (#{ids})"
-			sqlStr += " and t.spent_on between '#{from}' and '#{to}'" unless from.blank? && to.blank?	
-			sqlStr += " group by startday, user_id order by startday desc, user_id ) as v1"		
-		end		
-
-		wkSqlStr = " left outer join " + entityNames[0] + " w on v1.startday = w.begin_date and v1.user_id = w.user_id " +
-					"left outer join users un on un.id = w.statusupdater_id"
-					
-		query = formQuery(wkSelectStr, sqlStr, wkSqlStr)
-	end
-	
-	def getQuery(teQuery, ids, from, to, status)
-		spField = getSpecificField()
-		dtRangeForUsrSqlStr =  "(" + getAllWeekSql(from, to) + ") tmp1"			
-		teSqlStr = "(" + teQuery + ") tmp2"
+	def findBySql(selectStr,sqlStr,wkSelectStr,wkSqlStr, status, ids)
+		spField = getSpecificField()				
+		dtRangeForUsrSqlStr =  "(" + getAllWeekSql(@from, @to) + ") tmp1"			
+		teSqlStr = "(" + wkSelectStr + sqlStr + wkSqlStr + ") tmp2"
 		
-		query = "select tmp3.user_id as user_id , tmp3.spent_on as spent_on, tmp3.#{spField} as #{spField}, tmp3.status as status, tmp3.status_updater as status_updater, tmp3.created_on as created_on from (select tmp1.id as user_id, tmp1.created_on, tmp1.selected_date as spent_on, " + 
+		query = "select tmp3.user_id, tmp3.spent_on, tmp3.#{spField}, tmp3.status, tmp3.status_updater, tmp3.created_on from (select tmp1.id as user_id, tmp1.created_on, tmp1.selected_date as spent_on, " + 
 				"case when tmp2.#{spField} is null then 0 else tmp2.#{spField} end as #{spField}, " +
-				"case when tmp2.status is null then 'e' else tmp2.status end as status, tmp2.status_updater "
-		query = query + " from " + dtRangeForUsrSqlStr + " left join " + teSqlStr
-		query = query + " on tmp1.id = tmp2.user_id and tmp1.selected_date = tmp2.spent_on where tmp1.id in (#{ids})) tmp3 "
+				"case when tmp2.status is null then 'e' else tmp2.status end as status, tmp2.status_updater from "
+		query = query + dtRangeForUsrSqlStr + " left join " + teSqlStr
+		query = query + " on tmp1.id = tmp2.user_id and tmp1.selected_date = tmp2.spent_on where tmp1.id in (#{ids}) ) tmp3 "
 		query = query + " left outer join (select min( #{getDateSqlString('t.spent_on')} ) as min_spent_on, t.user_id as usrid from time_entries t, users u "
 		query = query + " where u.id = t.user_id and u.id in (#{ids}) group by t.user_id ) vw on vw.usrid = tmp3.user_id "
 		query = query + getWhereCond(status)
-	end
-	
-	def findBySql(query)		
-		spField = getSpecificField()
+		query = query + " order by tmp3.spent_on desc, tmp3.user_id "
+			
 		result = TimeEntry.find_by_sql("select count(*) as id from (" + query + ") as v2")
-		@entry_count = result.blank? ? 0 : result[0].id
+		@entry_count = result[0].id
         setLimitAndOffset()		
 		rangeStr = formPaginationCondition()
 		
-		@entries = TimeEntry.find_by_sql(query + " order by tmp3.spent_on desc, tmp3.user_id " + rangeStr )
+		@entries = TimeEntry.find_by_sql(query + rangeStr)
 		@unit = nil
 		result = TimeEntry.find_by_sql("select sum(v2." + spField + ") as " + spField + " from (" + query + ") as v2")		
-		@total_hours = result.blank? ? 0 : result[0].hours
+		@total_hours = result[0].hours
 	end
 	
 	def getWhereCond(status)
 		current_date = getEndDay(Date.today)
-		dateStr = getConvertDateStr('tmp3.created_on')
 		query = "WHERE ((tmp3.spent_on between "
-		query = query + "case when vw.min_spent_on is null then #{getDateSqlString(dateStr)} else vw.min_spent_on end "
+		query = query + "case when vw.min_spent_on is null then #{getDateSqlString('date(tmp3.created_on)')} else vw.min_spent_on end "
 		query = query + "and '#{current_date}') OR "
-		query = query + "((tmp3.spent_on < case when vw.min_spent_on is null then #{getDateSqlString(dateStr)} else vw.min_spent_on end "
+		query = query + "((tmp3.spent_on < case when vw.min_spent_on is null then #{getDateSqlString('date(tmp3.created_on)')} else vw.min_spent_on end "
 		query = query + "and tmp3.status <> 'e') "
 		query = query + "OR (tmp3.spent_on > '#{current_date}' and tmp3.status <> 'e'))) "
 		if !status.blank?
-			query += " and tmp3.status in ('#{status.join("','")}') "
+			query += " and  tmp3.status in ('#{status.join("','")}') "
 		end
 		query
 	end
 	
 	def getAllWeekSql(from, to)
-		entityNames = getEntityNames()		
-		user_cf_sql = @query.user_cf_statement('u') if !@query.blank?
-		
+		#to = to.blank? || to > Date.today  ? getEndDay(Date.today) : to
+		entityNames = getEntityNames()
 		noOfDays = 't4.i*7*10000 + t3.i*7*1000 + t2.i*7*100 + t1.i*7*10 + t0.i*7'
 		sqlStr = "select u.id, u.created_on, v.selected_date from " +
 		"(select " + getAddDateStr(from, noOfDays) + " selected_date from " +
@@ -1861,12 +1417,42 @@ private
 		"(select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9) t2, " +
 		"(select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9) t3, " +
 		"(select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9) t4) v, " +
-		"(select u.id, u.created_on from users u) u "		
-		sqlStr += " #{user_cf_sql} " if !user_cf_sql.blank?
-		sqlStr += (!user_cf_sql.blank? ? " AND " : " WHERE ") + " v.selected_date between '#{from}' and '#{to}' "
+		"(select distinct u.id, u.created_on from users u) u " +		
+		"where selected_date between '#{from}' and '#{to}'"
 	end
 	
+	def getTEAllTimeRange(ids)
+		teQuery = "select #{getDateSqlString('t.spent_on')} as startday " +
+				"from time_entries t where user_id in (#{ids}) group by startday order by startday"
+		teResult = TimeEntry.find_by_sql(teQuery)
+	end
 	
+	def getUserAllTimeRange(ids)
+		usrQuery = "select date(min(created_on)) as startday from users where id in (#{ids})"
+		usrResult = User.find_by_sql(usrQuery)
+	end
+	
+	def getAllTimeRange(ids)		
+		teResult = getTEAllTimeRange(ids)
+		usrResult = getUserAllTimeRange(ids)
+		currentWeekEndDay = getEndDay(Date.today)
+		@from = getStartDay(Date.today)
+		@to = currentWeekEndDay
+		if !teResult.blank? && teResult.size > 0
+			@from = teResult[0].startday
+			@to = teResult[teResult.size - 1].startday + 6			
+			if currentWeekEndDay > @to
+				@to = currentWeekEndDay
+			end
+		end
+		if !usrResult.blank? && usrResult.size > 0
+			stDate = usrResult[0].startday
+			stDate = getStartDay(stDate) if !stDate.blank?
+			if (!stDate.blank? && stDate < @from)
+				@from = stDate
+			end
+		end		
+	end
 	
 	def findWkTEByCond(cond)
 		#@wktimes = Wktime.find(:all, :conditions => cond)
@@ -1880,12 +1466,11 @@ private
 	end
 	
 	def setValueForSpField(teEntry,spValue,decimal_separator,entry)
-		teEntry.hours = spValue.blank? ? nil : spValue.to_hours
-		#if (!spValue.blank? && is_number(spValue.gsub(decimal_separator, '.')))
-		#	teEntry.hours = spValue.gsub(decimal_separator, '.').to_f
-		#else
-		#	teEntry.hours = nil
-		#end		
+		if (!spValue.blank? && is_number(spValue.gsub(decimal_separator, '.')))
+			teEntry.hours = spValue.gsub(decimal_separator, '.').to_f
+		else
+			teEntry.hours = nil
+		end		
 	end
 	
 
@@ -1902,6 +1487,11 @@ private
 		ActionMailer::Base.raise_delivery_errors = raise_delivery_errors_old
 	
 	end
+
+	def getNewCustomField
+		TimeEntry.new.custom_field_values
+	end
+
 	
 	def getWkEntity
 		Wktime.new 
@@ -2018,9 +1608,19 @@ private
 	def formPaginationCondition
 		rangeStr = ""
 		if ActiveRecord::Base.connection.adapter_name == 'SQLServer'				
-			rangeStr = " OFFSET " + @offset.to_s + " ROWS FETCH NEXT " + @limit.to_s + " ROWS ONLY "
+			#status = params[:status]
+			if !params[:tab].blank? && params[:tab] =='wkexpense'
+				status = session[:wkexpense][:status]
+			else
+				status = session[:wktimes][:status]
+			end
+			if !status.blank? && status != 'all'
+				rangeStr = " AND (rownum > " + @offset.to_s  + " AND rownum <= " + (@offset  + @limit ).to_s + ")"
+			else			
+				rangeStr =" WHERE rownum > " + @offset.to_s  + " AND rownum <= " + (@offset  + @limit ).to_s
+			end   
 		else		
-			rangeStr = " LIMIT " + @limit.to_s +	" OFFSET " + @offset.to_s
+			rangeStr = 	" LIMIT " + @limit.to_s +	" OFFSET " + @offset.to_s
 		end
 		rangeStr
 	end
@@ -2036,21 +1636,12 @@ private
 		ret = projMember.size > 0
 	end
 	
-	def getTrackerbyIssue(issue_id)
-		result = Issue.where(['id = ?',issue_id]) if !issue_id.blank?
-		tracker = !result.blank? ? (result[0].blank? ? '0' : result[0].tracker_id if !result.blank?) : '0'
-		tracker
-	end
-	
 	def set_filter_session
 	 
 		if params[:searchlist].blank? && (session[:wktimes].nil? || session[:wkexpense].nil?)
-			session[:wktimes] = {:period_type => params[:period_type], :period => params[:period],:from => params[:from],:to => params[:to],
-			:project_id => params[:project_id], :filter_type => params[:filter_type],:user_id => params[:user_id],:status => params[:status],
-			:group_id => params[:group_id], :filters => @query.blank? ? nil : @query.filters }
-			session[:wkexpense] = {:period_type => params[:period_type], :period => params[:period],:from => params[:from],:to => params[:to],
-			:project_id => params[:project_id], :filter_type => params[:filter_type],:user_id => params[:user_id],:status => params[:status],
-			:group_id => params[:group_id], :filters => @query.blank? ? nil : @query.filters }
+			
+			session[:wktimes] = {:period_type => params[:period_type], :period => params[:period],:from => params[:from],:to => params[:to],:project_id => params[:project_id], :filter_type => params[:filter_type],:user_id => params[:user_id],:status => params[:status],:group_id => params[:group_id] }
+			session[:wkexpense] = {:period_type => params[:period_type], :period => params[:period],:from => params[:from],:to => params[:to],:project_id => params[:project_id], :filter_type => params[:filter_type],:user_id => params[:user_id],:status => params[:status],:group_id => params[:group_id] }
 			#session[:wkexpense]  = session[:wktimes] 
 		elsif params[:searchlist] =='wktime' || api_request?
 			session[:wktimes][:period_type] = params[:period_type]
@@ -2062,7 +1653,6 @@ private
 			session[:wktimes][:user_id] = params[:user_id]
 			session[:wktimes][:status] = params[:status]
 			session[:wktimes][:group_id] = params[:group_id]
-			session[:wktimes][:filters] = @query.blank? ? nil : @query.filters
 		elsif params[:searchlist] =='wkexpense' || api_request?
 			session[:wkexpense][:period_type] = params[:period_type]
 			session[:wkexpense][:period] = params[:period]
@@ -2073,36 +1663,6 @@ private
 			session[:wkexpense][:user_id] = params[:user_id]
 			session[:wkexpense][:status] = params[:status]
 			session[:wkexpense][:group_id] = params[:group_id]
-			session[:wkexpense][:filters] = @query.blank? ? nil : @query.filters
 		end		
-	end
-	
-	def findTEEntryBySql(query)
-		TimeEntry.find_by_sql(query)
-	end
-	
-	def formQuery(wkSelectStr, sqlStr, wkSqlStr)
-		query = wkSelectStr + sqlStr + wkSqlStr
-	end
-	
-	def getUserCFFromSession
-		session[:wktimes][:filters]
-	end
-	
-	def getUserIdFromSession
-		#return user_id from session
-		session[:wktimes][:user_id]
-	end
-	
-	def getStatusFromSession
-		session[:wktimes][:status]
-	end
-	
-	def setUserIdsInSession(ids)
-		session[:wktimes][:all_user_ids] = ids
-	end
-	
-	def getUserIdsFromSession
-		session[:wktimes][:all_user_ids]
-	end
+	 end	
 end

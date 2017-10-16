@@ -1,26 +1,8 @@
-# ERPmine - ERP for service industry
-# Copyright (C) 2011-2016  Adhi software pvt ltd
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
 module WktimeHelper
   include ApplicationHelper
   include Redmine::Export::PDF
   include Redmine::Export::PDF::IssuesPdfHelper
   include Redmine::Utils::DateCalculation
-  
 
 	def options_for_period_select(value)
 		options_for_select([[l(:label_all_time), 'all'],
@@ -81,7 +63,7 @@ module WktimeHelper
     decimal_separator = l(:general_csv_decimal_separator)
     #custom_fields = WktimeCustomField.find(:all)
 	custom_fields = WktimeCustomField.all
-    export = Redmine::Export::CSV.generate do |csv|
+    export = CSV.generate(:col_sep => l(:general_csv_separator)) do |csv|
       # csv header fields
       headers = [l(:field_user),
                  l(:field_project),
@@ -218,7 +200,7 @@ module WktimeHelper
 	pdf.AddPage(orientation)
 	
 	if !logo.blank? && (File.exist? (Redmine::Plugin.public_directory + "/redmine_wktime/images/" + logo))
-		pdf.Image(Redmine::Plugin.public_directory + "/redmine_wktime/images/" + logo, page_width-50, 10,40,25)
+		pdf.Image(Redmine::Plugin.public_directory + "/redmine_wktime/images/" + logo, page_width-10-20, 10)
 	end
 	
 	render_header(pdf, entries, user, startday, row_height,title)
@@ -301,16 +283,16 @@ module WktimeHelper
 	def render_newpage(pdf,orientation,logo,page_width)
 		pdf.AddPage(orientation)
 		if !logo.blank? && (File.exist? (Redmine::Plugin.public_directory + "/redmine_wktime/images/" + logo))
-			pdf.Image(Redmine::Plugin.public_directory + "/redmine_wktime/images/" + logo, page_width-50, 10,40,25)
+			pdf.Image(Redmine::Plugin.public_directory + "/redmine_wktime/images/" + logo, page_width-10-20, 10)
 			pdf.Ln
-			pdf.SetY(pdf.GetY+25)
+			pdf.SetY(pdf.GetY+10)
 		end
 	end
 	
 	def getKey(entry,unitLabel)
 		cf_in_row1_value = nil
 		cf_in_row2_value = nil
-		key = entry.project.id.to_s + (entry.issue.blank? ? '' : entry.issue.id.to_s) + (entry.activity.blank? ? '' : entry.activity.id.to_s) + (unitLabel.blank? ? '' : entry.currency)
+		key = entry.project.id.to_s + (entry.issue.blank? ? '' : entry.issue.id.to_s) + entry.activity.id.to_s + (unitLabel.blank? ? '' : entry.currency)
 		entry.custom_field_values.each do |custom_value|			
 			custom_field = custom_value.custom_field
 			if (!Setting.plugin_redmine_wktime['wktime_enter_cf_in_row1'].blank? &&	Setting.plugin_redmine_wktime['wktime_enter_cf_in_row1'].to_i == custom_field.id)
@@ -380,7 +362,7 @@ module WktimeHelper
 		return weeklyHash
 	end
 
-def getColumnValues(matrix, totals, unitLabel,rowNumberRequired, j=0, includeComments=false)
+def getColumnValues(matrix, totals, unitLabel,rowNumberRequired, j=0)
 	col_values = []
 	matrix_values = []
 	k=0
@@ -400,15 +382,9 @@ def getColumnValues(matrix, totals, unitLabel,rowNumberRequired, j=0, includeCom
 					if !issueWritten
 						col_values[k] = entry.project.name
 						col_values[k+1] = entry.issue.blank? ? "" : entry.issue.subject
-						col_values[k+2] = entry.activity.blank? ? "" : entry.activity.name
-						currencyColIndex = k+3
-						if includeComments && (!Setting.plugin_redmine_wktime['wktime_enter_comment_in_row'].blank? &&
-						Setting.plugin_redmine_wktime['wktime_enter_comment_in_row'].to_i == 1)
-							col_values[k+3]= entry.comments
-							currencyColIndex = k+4
-						end
+						col_values[k+2] = entry.activity.name
 						if !unitLabel.blank?
-							col_values[currencyColIndex]= entry.currency
+							col_values[k+3]= entry.currency
 						end
 						custom_field_values = entry.custom_field_values
 						set_cf_value(col_values, custom_field_values, 'wktime_enter_cf_in_row1')	
@@ -580,9 +556,8 @@ end
 	
 	def getTimeEntryStatus(spent_on,user_id)
 		#result = Wktime.find(:all, :conditions => [ 'begin_date = ? AND user_id = ?', getStartDay(spent_on), user_id])	
-		start_day = getStartDay(spent_on)	
-		locked  = isLocked(start_day)
-		#locked = call_hook(:controller_check_locked,{ :startdate => start_day})
+		start_day = getStartDay(spent_on)		
+		locked = call_hook(:controller_check_locked,{ :startdate => start_day})
 		locked  = locked.blank? ? '' : (locked.is_a?(Array) ? (locked[0].blank? ? '': locked[0].to_s) : locked.to_s) 
 		locked = ( !locked.blank? && to_boolean(locked))
 		if locked
@@ -594,81 +569,11 @@ end
 		return 	result		
 	end
 	
-	def time_expense_tabs
-		if params[:controller] == "wktime" || params[:controller] == "wkexpense" || params[:controller] == "wkattendance" || params[:controller] == "wkpayroll"
-			tabs = [
+	def time_expense_tabs			   
+		tabs = [
 				{:name => 'wktime', :partial => 'wktime/tab_content', :label => :label_wktime},
-				{:name => 'wkexpense', :partial => 'wktime/tab_content', :label => :label_wkexpense},
-				{:name => 'leave', :partial => 'wktime/tab_content', :label => :label_wk_leave},
-				{:name => 'clock', :partial => 'wktime/tab_content', :label => :label_clock},
-				{:name => 'payroll', :partial => 'wktime/tab_content', :label => :label_payroll},
-				{:name => 'usersettings', :partial => 'wktime/tab_content', :label => :label_user_settings}
-			   ]
-		# elsif params[:controller] == "wkattendance"
-			# tabs = [
-				# {:name => 'leave', :partial => 'wktime/tab_content', :label => :label_wk_leave},
-				# {:name => 'clock', :partial => 'wktime/tab_content', :label => :label_clock}
-			   # ]
-		# elsif params[:controller] == "wkpayroll"
-			# tabs = [
-				# {:name => 'payroll', :partial => 'wktime/tab_content', :label => :label_payroll},
-				# {:name => 'usersettings', :partial => 'wktime/tab_content', :label => :label_user_settings}
-			   # ]
-		elsif params[:controller] == "wklead" || params[:controller] == "wkcrmaccount" || params[:controller] == "wkopportunity" || params[:controller] == "wkcrmactivity" || params[:controller] == "wkcrmcontact"
-			tabs = [
-				{:name => 'wklead', :partial => 'wktime/tab_content', :label => :label_lead_plural},
-				{:name => 'wkcrmaccount', :partial => 'wktime/tab_content', :label => :label_accounts},
-				{:name => 'wkopportunity', :partial => 'wktime/tab_content', :label => :label_opportunity_plural},
-				{:name => 'wkcrmactivity', :partial => 'wktime/tab_content', :label => :label_activity_plural},
-				{:name => 'wkcrmcontact', :partial => 'wktime/tab_content', :label => :label_contact_plural}
-			   ]
-		
-		elsif params[:controller] == "wkinvoice" || params[:controller] == "wkcontract" || params[:controller] == "wkaccountproject"  || params[:controller] == "wkpayment" 
-		#|| params[:controller] == "wktax" || params[:controller] == "wkexchangerate"
-			tabs = [
-				{:name => 'wkinvoice', :partial => 'wktime/tab_content', :label => :label_invoice},
-				{:name => 'wkpayment', :partial => 'wktime/tab_content', :label => :label_payments},
-			#	{:name => 'wkcrmaccount', :partial => 'wktime/tab_content', :label => :label_accounts},
-				{:name => 'wkcontract', :partial => 'wktime/tab_content', :label => :label_contracts},
-				{:name => 'wkaccountproject', :partial => 'wktime/tab_content', :label => :label_acc_projects},				
-			#	{:name => 'wktax', :partial => 'wktime/tab_content', :label => :label_tax},
-			#	{:name => 'wkexchangerate', :partial => 'wktime/tab_content', :label => :label_exchange_rate}
-			   ]
-		elsif params[:controller] == "wkgltransaction" || params[:controller] == "wkledger"
-			tabs = [
-				{:name => 'wkgltransaction', :partial => 'wktime/tab_content', :label => :label_transaction},
-				{:name => 'wkledger', :partial => 'wktime/tab_content', :label => :label_ledger}
-			   ]
-		elsif params[:controller] == "wkrfq" || params[:controller] == "wkquote" || params[:controller] == "wkpurchaseorder" || params[:controller] == "wksupplierinvoice" || params[:controller] == "wksupplierpayment" || params[:controller] == "wksupplieraccount" || params[:controller] == "wksuppliercontact"
-			tabs = [
-				{:name => 'wkrfq', :partial => 'wktime/tab_content', :label => :label_rfq},
-				{:name => 'wkquote', :partial => 'wktime/tab_content', :label => :label_quotes},
-				{:name => 'wkpurchaseorder', :partial => 'wktime/tab_content', :label => :label_purchase_order},
-				{:name => 'wksupplierinvoice', :partial => 'wktime/tab_content', :label => :label_supplier_invoice},
-				{:name => 'wksupplierpayment', :partial => 'wktime/tab_content', :label => :label_supplier_payment},
-				{:name => 'wksupplieraccount', :partial => 'wktime/tab_content', :label => :label_supplier_account},
-				{:name => 'wksuppliercontact', :partial => 'wktime/tab_content', :label => :label_supplier_contact}
-			   ]
-		elsif params[:controller] == "wkcrmenumeration" || params[:controller] == "wktax" || params[:controller] == "wkexchangerate" || params[:controller] == "wklocation"
-			tabs = [
-				{:name => 'wkcrmenumeration', :partial => 'wktime/tab_content', :label => :label_enumerations},
-				{:name => 'wklocation', :partial => 'wktime/tab_content', :label => :label_location},
-				{:name => 'wktax', :partial => 'wktime/tab_content', :label => :label_tax},
-				{:name => 'wkexchangerate', :partial => 'wktime/tab_content', :label => :label_exchange_rate}
-				
-			   ]
-		else
-			tabs = [
-				{:name => 'wkproduct', :partial => 'wktime/tab_content', :label => :label_product},
-				{:name => 'wkproductitem', :partial => 'wktime/tab_content', :label => :label_item},
-				{:name => 'wkshipment', :partial => 'wktime/tab_content', :label => :label_shipment},
-				{:name => 'wkbrand', :partial => 'wktime/tab_content', :label => :label_brand},
-				{:name => 'wkattributegroup', :partial => 'wktime/tab_content', :label => :label_attribute},
-				{:name => 'wkunitofmeasurement', :partial => 'wktime/tab_content', :label => :label_uom}
-				
-			   ]
-		end
-		tabs
+				{:name => 'wkexpense', :partial => 'wktime/tab_content', :label => :label_wkexpense}
+			   ]	
 	end		
 	
 	#change the date to first day of week
@@ -700,18 +605,14 @@ end
 			startDate = startDate-7
 		end
 		
-		nonSubmissionUserIds = getNonSubmissionUserIds
 		queryStr =  "select distinct u.* from projects p" +
-		 " inner join members m on p.id = m.project_id and p.status not in (#{Project::STATUS_CLOSED},#{Project::STATUS_ARCHIVED})"  +
-		 " inner join member_roles mr on m.id = mr.member_id" +
-		 " inner join roles r on mr.role_id = r.id and r.permissions like '%:log_time%'" +
-		 " inner join users u on m.user_id = u.id and u.status = #{User::STATUS_ACTIVE}" +
-		 " left outer join wktimes w on u.id = w.user_id and w.begin_date = '" + startDate.to_s + "'" +
-		 " where (w.status is null or w.status = 'n') "
+					" inner join members m on p.id = m.project_id and p.status not in (#{Project::STATUS_CLOSED},#{Project::STATUS_ARCHIVED})"  +
+					" inner join member_roles mr on m.id = mr.member_id" +
+					" inner join roles r on mr.role_id = r.id and r.permissions like '%:log_time%'" +
+					" inner join users u on m.user_id = u.id" +
+					" left outer join wktimes w on u.id = w.user_id and w.begin_date = '" + startDate.to_s + "'" +
+					" where (w.status is null or w.status = 'n')"			
 		
-		if !nonSubmissionUserIds.blank?
-			queryStr += "and u.id in (#{nonSubmissionUserIds})"
-		end
 		users = User.find_by_sql(queryStr)
 		users.each do |user|
 			WkMailer.nonSubmissionNotification(user,startDate).deliver
@@ -758,15 +659,11 @@ end
 	def settings_tabs		   
 		tabs = [
 				{:name => 'general', :partial => 'settings/tab_general', :label => :label_general},
-			#	{:name => 'display', :partial => 'settings/tab_display', :label => :label_display},
-				{:name => 'wktime', :partial => 'settings/tab_time', :label => :label_te},
-				{:name => 'attendance', :partial => 'settings/tab_attendance', :label => :report_attendance},
-				{:name => 'payroll', :partial => 'settings/tab_payroll', :label => :label_payroll},
-				{:name => 'billing', :partial => 'settings/tab_billing', :label => :label_wk_billing},
-				{:name => 'accounting', :partial => 'settings/tab_accounting', :label => :label_accounting},
-				{:name => 'CRM', :partial => 'settings/tab_crm', :label => :label_crm},
-				{:name => 'purchase', :partial => 'settings/tab_purchase', :label => :label_purchasing},
-				{:name => 'inventory', :partial => 'settings/tab_inventory', :label => :label_inventory}
+				{:name => 'display', :partial => 'settings/tab_display', :label => :label_display},
+				{:name => 'wktime', :partial => 'settings/tab_time', :label => :label_wktime},
+				{:name => 'wkexpense', :partial => 'settings/tab_expense', :label => :label_wkexpense},
+				{:name => 'approval', :partial => 'settings/tab_approval', :label => :label_wk_approval_system},
+				{:name => 'publicHoliday', :partial => 'settings/tab_holidays', :label => :label_wk_public_holiday}
 			   ]	
 	end	
 	
@@ -875,14 +772,9 @@ end
 				groupusers << scope.all
 			end
 		end
-		grpUserIds = Array.new	
-		#grpUserIds = groupusers[0].collect{|user| user.id}.uniq if !groupusers.blank? && !groupusers[0].blank?
-		groupusers.each do |groupuser|
-			groupuser.each do |user|
-					 grpUserIds << user.id
-			end
-		end
-  		isAccountUser = grpUserIds.include?(User.current.id)
+		grpUserIds = Array.new
+		grpUserIds = groupusers[0].collect{|user| user.id}.uniq if !groupusers.blank? && !groupusers[0].blank?
+		isAccountUser = grpUserIds.include?(User.current.id)
 	end
 	
 	def getAccountUserProjects
@@ -893,7 +785,7 @@ end
 		if ActiveRecord::Base.connection.adapter_name == 'PostgreSQL'			 
 			dateSqlStr = "date('#{dtfield}') + "	+ noOfDays.to_s
 		elsif ActiveRecord::Base.connection.adapter_name == 'SQLite'			 
-			dateSqlStr = "date('#{dtfield}' , '+' || " + "(#{noOfDays.to_s})" + " || ' days')"
+			dateSqlStr = "date('#{dtfield}' , '+' || " + noOfDays.to_s + " || ' days')"
 		elsif ActiveRecord::Base.connection.adapter_name == 'SQLServer'		
 			dateSqlStr = "DateAdd(d, " + noOfDays.to_s + ",'#{dtfield}')"
 		else
@@ -901,406 +793,4 @@ end
 		end		
 		dateSqlStr
 	end
-	
-	def getAddMonthDateStr(dtfield,intervalVal,intervalType)
-		interval = getIntervalFormula(intervalVal)
-		if ActiveRecord::Base.connection.adapter_name == 'PostgreSQL'			 
-			dateSqlStr = "date('#{dtfield}') + interval '1 month' * "	+ interval.to_s
-		elsif ActiveRecord::Base.connection.adapter_name == 'SQLite'			 
-			dateSqlStr = "date('#{dtfield}' , '+' || " + "(#{interval.to_s})" + " || ' months')"
-		elsif ActiveRecord::Base.connection.adapter_name == 'SQLServer'		
-			dateSqlStr = "DateAdd(m, " + interval.to_s + ",'#{dtfield}')"
-		else
-			dateSqlStr = "adddate('#{dtfield}', " + interval.to_s + " MONTH )"
-		end		
-		dateSqlStr
-	end
-	
-	def getIntervalFormula(intervalVal)
-		(t4.i*intervalVal*10000 + t3.i*intervalVal*1000 + t2.i*intervalVal*100 + t1.i*intervalVal*10 + t0.i*intervalVal)
-	end
-	
-	def getConvertDateStr(dtfield)		
-		if ActiveRecord::Base.connection.adapter_name == 'SQLServer'		
-			dateSqlStr = "cast(#{dtfield} as date)"
-		else
-			# For MySQL, PostgreSQL, SQLite
-			dateSqlStr = "date(#{dtfield})"
-		end
-		dateSqlStr
-	end
-	
-	def getValidUserCF(userCFHash, userCF)
-		tmpUserCFHash = userCFHash
-		if !userCF.blank? && !userCFHash.blank?
-			cfHash = Hash.new
-			userCF.each do |cf|
-				cfHash["user.cf_#{cf.id}"] = "#{cf.name}"
-			end
-			userCFHash.each_key do |key|
-				if !cfHash.has_key?(key)
-					tmpUserCFHash.delete(key)
-				end
-			end
-		end
-		tmpUserCFHash
-	end
-	
-	#Luna Lenardi contribution
-	def number_currency_format_unit
-		begin
-			l('number.currency.format.unit')
-		rescue
-			'$'
-		end
-	end
-	
-	def getNonSubmissionUserIds
-		groupusers = Array.new
-		nonSubmissionUserIds = Array.new
-		userIds = ""
-		accountGrpIds = Setting.plugin_redmine_wktime['wktime_approval_groups'] if !Setting.plugin_redmine_wktime['wktime_approval_groups'].blank?
-		if !accountGrpIds.blank?
-			accountGrpIds = accountGrpIds.collect{|i| i.to_i}
-		end
-		if !accountGrpIds.blank?
-			accountGrpIds.each do |group_id|
-			scope = User.in_group(group_id) 
-			groupusers << scope.all
-			end
-		end
-		grpUserIds = Array.new
-		grpids = ""
-		count = 0
-		nonSubmissionUserIds = []
-		if !accountGrpIds.include?(0)
-			begin
-				nonSubmissionUserIds = nonSubmissionUserIds + groupusers[count].collect{|user| user.id}.uniq if !groupusers.blank? && !groupusers[count].blank?	
-				count += 1
-			end until count == groupusers.length
-			userIds = nonSubmissionUserIds.empty? ? -1 : nonSubmissionUserIds.join(",")
-		end
-		userIds
-	end
-	
-	def findLastAttnEntry(isCurrentUser)
-		if isCurrentUser
-			lastAttnEntries = WkAttendance.find_by_sql("select a.* from wk_attendances a inner join ( select max(start_time) as start_time,user_id from wk_attendances where user_id = #{User.current.id} group by user_id ) vw on a.start_time = vw.start_time and a.user_id = vw.user_id order by a.start_time ")
-		else
-			lastAttnEntries = WkAttendance.find_by_sql("select a.* from wk_attendances a inner join ( select max(start_time) as start_time,user_id from wk_attendances group by user_id ) vw on a.start_time = vw.start_time and a.user_id = vw.user_id order by a.start_time ")
-		end
-		lastAttnEntries
-	end	
-	
-	def computeWorkedHours(startTime,endTime, ishours)
-		currentEntryDate = startTime.localtime
-		workedHours = endTime-startTime
-		if !Setting.plugin_redmine_wktime['wktime_break_time'].blank?
-			Setting.plugin_redmine_wktime['wktime_break_time'].each_with_index do |element,index|
-			  listboxArr = element.split('|')
-			  breakStart = currentEntryDate.change({ hour: listboxArr[0], min:listboxArr[1], sec: '00' })
-			  breakEnd = currentEntryDate.change({ hour: listboxArr[2], min:listboxArr[3], sec: '00' })
-			  if(!(startTime>breakEnd || endTime < breakStart))
-				if startTime < breakStart
-					if endTime < breakEnd
-						workedHours = workedHours - (endTime-breakStart)
-					else
-						workedHours = workedHours - (breakEnd-breakStart)
-					end
-				else
-					if endTime > breakEnd
-						workedHours = workedHours - (breakEnd-startTime)
-					else
-						workedHours = nil
-					end
-				end
-			  end
-			end
-		end
-		if ishours
-			workedHours = (workedHours/1.hour).round(2) unless workedHours.blank?
-		end
-		workedHours
-	end
-	
-	def totalhours
-		dateStr = getConvertDateStr('start_time')
-		(WkAttendance.where("user_id = #{User.current.id} and #{dateStr} = '#{Time.now.strftime("%Y-%m-%d")}'").sum(:hours)).round(2)
-	end
-	
-	def showExpense
-		!Setting.plugin_redmine_wktime['wktime_enable_expense_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_expense_module'].to_i == 1
-	end
-	
-	def showAttendance
-		!Setting.plugin_redmine_wktime['wktime_enable_attendance_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_attendance_module'].to_i == 1 
-	end
-	
-	def showReports
-		!Setting.plugin_redmine_wktime['wktime_enable_report_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_report_module'].to_i == 1
-	end
-	
-	def getTEAllTimeRange(ids)
-		teQuery = "select v.startday as startday from (select #{getDateSqlString('t.spent_on')} as startday " +
-				"from time_entries t where user_id in (#{ids})) v group by v.startday order by v.startday"
-		teResult = TimeEntry.find_by_sql(teQuery)
-	end
-	
-	def getAttnAllTimeRange(ids)
-		dateStr = getConvertDateStr('start_time')
-		teQuery = "select (#{dateStr}) as startday from wk_attendances w where user_id in (#{ids}) order by #{dateStr} "
-		teResult = WkAttendance.find_by_sql(teQuery)
-	end
-	
-	def getUserAllTimeRange(ids)
-		dateStr = getConvertDateStr('min(created_on)')
-		usrQuery = "select (#{dateStr}) as startday from users where id in (#{ids})"
-		usrResult = User.find_by_sql(usrQuery)
-	end
-	
-	#This function used in Time & Attendance Module
-	def getAllTimeRange(ids, isTime)
-		teResult = isTime ? getTEAllTimeRange(ids) : getAttnAllTimeRange(ids)		
-		usrResult = getUserAllTimeRange(ids)
-		currentWeekEndDay = getEndDay(Date.today)
-		@from = getStartDay(Date.today)
-		@to = currentWeekEndDay
-		if !teResult.blank? && teResult.size > 0
-			@from = (teResult[0].startday).to_date
-			@to = (teResult[teResult.size - 1].startday).to_date + 6			
-			if currentWeekEndDay > @to
-				@to = currentWeekEndDay
-			end
-		end
-		if !usrResult.blank? && usrResult.size > 0
-			stDate = (usrResult[0].startday)
-			stDate = getStartDay(stDate.to_date) if !stDate.blank? && isTime
-			if (!stDate.blank? && stDate.to_date < @from.to_date)
-				@from = stDate
-			end
-		end		
-	end
-	
-	#change the date to a last day of week
-	def getEndDay(date)
-		start_of_week = getStartOfWeek
-		#Martin Dube contribution: 'start of the week' configuration
-		unless date.nil?
-			daylast_diff = (6 + start_of_week) - date.wday
-			date += (daylast_diff%7)
-		end
-		date
-	end
-	
-	 # Returns the options for the date_format setting
-    def date_format_options
-		Import::DATE_FORMATS.map do |f|
-		  format = f.gsub('%', '').gsub(/[dmY]/) do
-			{'d' => 'DD', 'm' => 'MM', 'Y' => 'YYYY'}[$&]
-		  end
-		  [format+" HH:MM:SS", f + " %T"]
-		end
-	end
-	
-	def showPayroll
-		!Setting.plugin_redmine_wktime['wktime_enable_payroll_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_payroll_module'].to_i == 1
-	end
-	
-	def showBilling
-		(!Setting.plugin_redmine_wktime['wktime_enable_billing_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_billing_module'].to_i == 1 ) && isModuleAdmin('wktime_billing_groups')
-			
-	end
-	
-	# Return the given type of custom Fields array
-	# Used in plugin settings
-	def getCfListArr(customFields, cfType, needBlank)
-		unless customFields.blank?
-			cfs = customFields.select {|cf| cf.field_format == cfType }
-			unless cfs.blank?
-				cfArray = cfs.collect {|cf| [cf.name, cf.id] }
-			else
-				cfArray = Array.new
-			end
-		else
-			cfArray = Array.new
-		end
-		cfArray.unshift(["",0]) if needBlank
-		cfArray
-	end
-	
-	def getPluginSetting(setting_name)
-		Setting.plugin_redmine_wktime[setting_name]
-	end
-	
-	def isModuleAdmin(settings)
-		group = nil
-		isbillingUser = false
-		groupusers = Array.new
-		billingGrpId = getSettingCfId(settings)
-		if !billingGrpId.blank? && billingGrpId != 0
-				scope = User.in_group(billingGrpId)	
-				groupusers << scope.all
-		end
-		grpUserIds = Array.new		
-		grpUserIds = groupusers[0].collect{|user| user.id}.uniq if !groupusers.blank? && !groupusers[0].blank?
-		isbillingUser = grpUserIds.include?(User.current.id)
-	end
-	
-	def getSettingCfId(settingId)
-		cfId = Setting.plugin_redmine_wktime[settingId].blank? ? 0 : Setting.plugin_redmine_wktime[settingId].to_i
-		cfId
-	end
-	
-	def isBilledTimeEntry(tEntry)
-		ret = false
-		unless tEntry.blank?
-			cfEntry = tEntry.custom_value_for(getSettingCfId('wktime_billing_id_cf'))
-			ret = true unless cfEntry.blank? || cfEntry.value.blank?
-		end
-		ret
-	end
-	
-	def showAccounting
-		(!Setting.plugin_redmine_wktime['wktime_enable_accounting_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_accounting_module'].to_i == 1 ) && (isModuleAdmin('wktime_accounting_group') || isModuleAdmin('wktime_accounting_admin') )
-	end
-	
-	def isChecked(settingName)
-		(!Setting.plugin_redmine_wktime[settingName].blank? && Setting.plugin_redmine_wktime[settingName].to_i == 1)
-	end
-	
-	def showCRMModule
-		(!Setting.plugin_redmine_wktime['wktime_enable_crm_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_crm_module'].to_i == 1 ) && (isModuleAdmin('wktime_crm_group') || isModuleAdmin('wktime_crm_admin') )
-	end
-	
-	def getGroupUserIdsArr(groupId)
-		userIdArr = User.in_group(groupId).all.pluck(:id)
-		userIdArr
-	end
-	
-	def getGroupUserArr(groupId)
-		userIdArr = Array.new
-		userIds = User.in_group(groupId).all
-		if !userIds.blank?
-			userIds.each do | entry|				
-				userIdArr <<  [(entry.firstname + " " + entry.lastname), entry.id  ]
-			end
-		end
-		userIdArr
-	end
-	
-	def groupOfUsers
-		grpArr = nil
-		grpArr = (getGroupUserArr(getSettingCfId('wktime_crm_group')) + 
-				  getGroupUserArr(getSettingCfId('wktime_crm_admin'))).uniq
-		grpArr.unshift(["",0]) 
-			
-		grpArr
-	end
-	
-	def showTimeExpense
-		(!Setting.plugin_redmine_wktime['wktime_enable_time_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_time_module'].to_i == 1) || (!Setting.plugin_redmine_wktime['wktime_enable_expense_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_expense_module'].to_i == 1)
-	end
-	
-	def getDatesSql(from, intervalVal, intervalType)
-		sqlStr = "(select " + getAddMonthDateStr(from,intervalVal,intervalType) + " selected_date from " +
-			"(select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9) t0,
-			 (select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9) t1,
-			 (select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9) t2,
-			 (select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9) t3,
-			 (select 0 i union select 1 union select 2 union select 3 union select 4 union select 5 union select 6 union select 7 union select 8 union select 9)t4"
-		if intervalType == 'month'
-			sqlStr = sqlStr + " where #{getIntervalFormula(intervalVal)}<24000" 
-		end
-		sqlStr = sqlStr + " )v"
-	
-	end
-	
-	def getAddMonthDateStr(dtfield,intervalVal,intervalType)
-		interval = getIntervalFormula(intervalVal)
-		if ActiveRecord::Base.connection.adapter_name == 'PostgreSQL'			 
-			dateSqlStr = "date('#{dtfield}') + interval '1 month' * "	+ interval.to_s
-		elsif ActiveRecord::Base.connection.adapter_name == 'SQLite'			 
-			dateSqlStr = "date('#{dtfield}' , '+' || " + "(#{interval.to_s})" + " || ' months')"
-		elsif ActiveRecord::Base.connection.adapter_name == 'SQLServer'		
-			dateSqlStr = "DateAdd(m, " + interval.to_s + ",'#{dtfield}')"
-		else
-			dateSqlStr = "adddate('#{dtfield}', INTERVAL " + interval.to_s + " MONTH )"
-		end		
-		dateSqlStr
-	end
-	
-	def getIntervalFormula(intervalVal)
-		" (t4.i*#{intervalVal}*10000 + t3.i*#{intervalVal}*1000 + t2.i*#{intervalVal}*100 + t1.i*#{intervalVal}*10 + t0.i*#{intervalVal}) "
-	end
-	
-	def isLocked(startdate)
-		isLocked = false
-		lock = WkTeLock.order(id: :desc)	
-		if !lock.blank? && lock.size > 0		
-			startdate = startdate.to_s.to_date
-			isLocked = startdate <= lock[0].lock_date.to_date			
-		end
-		isLocked
-	end
-	
-	def concatColumnsSql(columnsArr, aliasName, joinChar)
-		joinChar = ' ' if joinChar.blank?
-		if ActiveRecord::Base.connection.adapter_name == 'SQLServer'	
-			concatSql = " #{columnsArr.join(" + '#{joinChar}' + ")} "	
-		elsif ActiveRecord::Base.connection.adapter_name == 'SQLite'
-			concatSql = " #{columnsArr.join(" || '#{joinChar}' || ")} "
-		else
-			concatSql = " concat( #{columnsArr.join(" , '#{joinChar}' , ")}) "
-		end
-		concatSql = concatSql + " as #{aliasName} " unless aliasName.blank?
-		concatSql
-	end
-		
-	def showPurchase
-		(!Setting.plugin_redmine_wktime['wktime_enable_pur_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_pur_module'].to_i == 1 ) && (isModuleAdmin('wktime_pur_group') || isModuleAdmin('wktime_pur_admin') )
-	end
-	
-	def showInventory
-		(!Setting.plugin_redmine_wktime['wktime_enable_inventory_module'].blank? &&
-			Setting.plugin_redmine_wktime['wktime_enable_inventory_module'].to_i == 1 ) && (isModuleAdmin('wktime_inventory_group') || isModuleAdmin('wktime_inventory_admin') )
-	end
-	
-	def generic_options_for_select(model, sqlCond, orderBySql, displayCol, valueCol, selectedVal, needBlank)
-		ddArray = Array.new
-		if sqlCond.blank? || orderBySql.blank?
-			if sqlCond.blank? && orderBySql.blank?
-				ddValues = model.all
-			else
-				if sqlCond.blank?
-					ddValues = model.order("#{orderBySql}")
-				else	
-					ddValues = model.where("#{sqlCond}")
-				end
-			end
-		else
-			ddValues = model.where("#{sqlCond}").order("#{orderBySql}")
-		end
-		unless ddValues.blank?
-			ddArray = ddValues.collect {|t| [t["#{displayCol}"], t["#{valueCol}"]] }
-		end
-		ddArray.unshift(["",""]) if needBlank
-		options_for_select(ddArray, :selected => selectedVal)
-	end
-	
-	def hasSettingPerm
-		ret = false
-		ret = isModuleAdmin('wktime_inventory_admin') || isModuleAdmin('wktime_accounting_admin') || isModuleAdmin('wktime_crm_admin') || isModuleAdmin('wktime_pur_admin') || isAccountUser || isModuleAdmin('wktime_billing_groups')
-		ret
-	end
-	
 end

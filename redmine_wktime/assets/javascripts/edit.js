@@ -16,60 +16,10 @@ var issueField = 'Issue';
 var submissionack="";
 var minHourAlertMsg="";
 var decSeparator = ".";
-var lblPleaseSelect = "";
-var lblWarnUnsavedTE = "";
-var breakarray =  "";
-var elementend;
-var rowid;
-var clktot = 0;
-var addval = new Array();
-var totalBreakTime = 0;
-var nscount = 0;
-var clkdialogid = 0;
-var minHourperWeekAlertMsg="";
-var maxHourperWeekAlertMsg="";
 $(document).ready(function() {
+//$(function() {
 	var e_comments = $( "#_edit_comments_" );
-	var e_notes = $( "#_edit_notes_" );	
-	for(i = 0 ; i< 8 ; i++)
-	{
-		$( "#clockInOut-dlg"+i ).dialog({
-		autoOpen: false,
-		modal: false,
-		width:'300',
-		height: '300',
-        overflow: 'auto', /* Or scroll, depending on your needs*/
-		buttons: {
-			"Ok": function() {							
-				var attnEntriesId, attnStartTime, attnEndTime, attnhours;
-				var attnDayEntriesCnt = new Array();
-				var paramval = "";
-				var j;
-				//attnDayEntriesCnt = document.getElementById('attnDayEntriesCnt_'+clkdialogid).value;
-				attnDayEntriesCnt = document.getElementById('attnDayEntriesCnt_'+clkdialogid) != null ? document.getElementById('attnDayEntriesCnt_'+clkdialogid).value : -1;
-				for(j = 0; j < attnDayEntriesCnt ; j++)
-				{
-					
-					attnEntriesId = document.getElementById('attnEntriesId'+ clkdialogid +'_'+ j);
-					attnStartTime = document.getElementById('attnstarttime'+ clkdialogid +'_'+ j);
-					attnEndTime = document.getElementById('attnendtime'+ clkdialogid +'_'+ j);
-					attnhours = document.getElementById('hoursdiff'+ clkdialogid +'_'+ j);
-					if (attnStartTime.defaultValue !=  attnStartTime.value  || attnEndTime.defaultValue !=  attnEndTime.value ) {						
-						paramval += ( !attnEntriesId.value ? (( "|" + clkdialogid ) + "|") : (attnEntriesId.value + "|") ) +  attnStartTime.value + "|" + attnEndTime.value + "|" + attnhours.value + ",";
-					}
-					
-				}
-				updateAtt(paramval,true, "", -1);
-				$( this ).dialog( "close" );
-			},
-			Cancel: function() {
-				window.onbeforeunload = null;
-				$( this ).dialog( "close" );
-			}
-		}
-	});	
-	}
-	 
+	var e_notes = $( "#_edit_notes_" );
 
 	$( "#comment-dlg" ).dialog({
 		autoOpen: false,
@@ -109,7 +59,7 @@ $(document).ready(function() {
 					$( this ).dialog( "close" );				
 					//unregister this event since this is showing a 'don't leave' message
 					//loosk like this is not supported in Opera
-					//window.onbeforeunload = null;
+					window.onbeforeunload = null;
 			},
 			Cancel: function() {
 				$( this ).dialog( "close" );
@@ -133,80 +83,9 @@ $(document).ready(function() {
 			}
 		}
 	});	
-	
-	if(showWorkHeader) {
-		//when initially load the page hidden the clock in Clock out button
-		var clkStart, clkEnd, colNum, attnId;
-		if(document.getElementById('col_num') != null && document.getElementById('end_img') != null &&  document.getElementById('start_img') != null)
-		{
-			colNum = document.getElementById('col_num').value;
-			colNum++;
-			if(document.getElementById('end_' + colNum) != null)
-			{
-				clkEnd = document.getElementById('end_' + colNum).value;
-			}
-			if(document.getElementById('start_'+colNum) != null)
-			{
-				clkStart = document.getElementById('start_' + colNum).value;
-			}
-			attnId = document.getElementById('hdstart_' + colNum).value;
-			if(clkEnd == "00:00" && (clkStart != "00:00" || attnId > 0))
-			{
-					document.getElementById('end').style="display:inline; !important";
-					document.getElementById('start').style="display:none; !important";
-			}
-			else
-			{
-				document.getElementById('end').style="display:none; !important";
-			}
-		}	
-		
-		// when initially load the page update total and remaininghours
-		for(i = 1; i <= 7; i++)
-		{		
-			updateTotalHr(i, "");
-			updateRemainingHr(i, "");
-		}
-	}
+
 	
 });
-
-$(window).load(function(){
-	warnLeavingUnsavedTE(lblWarnUnsavedTE); 
-});
-
-var warnLeavingUnsavedTEMsg;
-function warnLeavingUnsavedTE(message) {
-  warnLeavingUnsavedTEMsg = message;
-  $(document).on('submit', 'form', function(){
-    $('textarea').removeData('changed');
-    $('input').removeData('changed');
-    $('select').removeData('changed');
-  });
-  setElementData('textarea');
-  setElementData('input');
-  setElementData('select');
-  window.onbeforeunload = function(){
-	var warn = (isChanged('textarea') || isChanged('input') || isChanged('select'));
-    if (warn) {return warnLeavingUnsavedTEMsg;}
-  };
-}
-
-function setElementData(elType) {
-  $(document).on('change', elType, function(){
-    $(this).data('changed', 'changed');
-  });
-}
-
-function isChanged(elType) {
-    var warn = false;
-    $(elType).blur().each(function(){
-      if ($(this).data('changed')) {
-        warn = true;
-      }
-    });
-	return warn;
-}
 
 function showComment(row, col) {
 	var images = $( 'img[name="custfield_img'+row+'[]"]' );
@@ -233,12 +112,12 @@ function showComment(row, col) {
 		$( "#_edit_comm_iss_" ).html(issueIds[i].value);
 	}else{
 		$( "#_edit_comm_proj_" ).html(projDropdowns[i].selectedIndex >= 0 ? 
-			projDropdowns[i].options[projDropdowns[i].selectedIndex].text : '');			
+			projDropdowns[i].options[projDropdowns[i].selectedIndex].text : '');
 		$( "#_edit_comm_iss_" ).html(issDropdowns[i].selectedIndex >= 0 ?
-			(issDropdowns[i].options[issDropdowns[i].selectedIndex].value == -1 ? '' : issDropdowns[i].options[issDropdowns[i].selectedIndex].text) : '');
+			issDropdowns[i].options[issDropdowns[i].selectedIndex].text : '');
 	}
 	$( "#_edit_comm_act_" ).html(actDropdowns[i].selectedIndex >= 0 ?
-		(actDropdowns[i].options[actDropdowns[i].selectedIndex].value == -1 ? '' : actDropdowns[i].options[actDropdowns[i].selectedIndex].text) : '');
+		actDropdowns[i].options[actDropdowns[i].selectedIndex].text : '');
 	
 	showCustomField();		
 	
@@ -373,11 +252,7 @@ function projectChanged(projDropdown, row){
 			url: issUrl,
 			type: 'get',
 			data: {project_id: id, user_id: uid,tracker_id: trackerListArr, format:fmt,startday:startday, issue_assign_user: issue_assign_user},
-			success: function(data){
-				var items = data.split('\n');
-				var needBlankOption = items.length-1 > 1 || allowBlankIssue ;
-				updateDropdown(data, row, issDropdown, true, needBlankOption, true, null); 
-			},
+			success: function(data){ updateDropdown(data, row, issDropdown, true, allowBlankIssue, true, null); },
 			beforeSend: function(){ $this.addClass('ajax-loading'); },
 			complete: function(){ $this.removeClass('ajax-loading'); }
 		});
@@ -385,12 +260,7 @@ function projectChanged(projDropdown, row){
 			url: actUrl,
 			type: 'get',
 			data: {project_id: id, user_id: uid, format:fmt},
-			success: function(data){
-				var actId = getDefaultActId(data);
-				var items = data.split('\n');
-				var needBlankOption = !(items.length-1 == 1 || actId != null);
-				updateDropdown(data, row, actDropdown, false, needBlankOption, true, actId);
-			},
+			success: function(data){ updateDropdown(data, row, actDropdown, false, false, true,null); },
 			beforeSend: function(){ $this.addClass('ajax-loading'); },
 			complete: function(){ $this.removeClass('ajax-loading'); }
 		});
@@ -474,7 +344,7 @@ function issueIdChanged(id, row){
 			data: {issue_id: id, user_id: uid, format:fmt},
 			success: function(data){ updateActDropdown(data, row, actDropdown);},
 			error: function(jqXHR, textStatus, errorThrown){
-				alert(issueField + " " + id  + " " + invalidMsg);
+				alert(issueField + ' ' + id + ' ' + errorThrown);
 			},
 			beforeSend: function(){ $this.addClass('ajax-loading'); },
 			complete: function(){ $this.removeClass('ajax-loading'); }
@@ -524,8 +394,6 @@ function updateIssDropdowns(itemStr, projDropdowns,projIds)
 function updateIssueDD(itemStr, project_id, projDropdowns, issDropdowns)
 {
 	var proj_id, issue_id=null;
-	var items = itemStr.split('\n');
-	var needBlankOption = items.length-1 > 1 || allowBlankIssue ;
 	if(projDropdowns){	
 		for (j=0; j < projDropdowns.length; j++){		
 			proj_id = projDropdowns[j].options[projDropdowns[j].selectedIndex].value;
@@ -537,7 +405,7 @@ function updateIssueDD(itemStr, project_id, projDropdowns, issDropdowns)
 					else {
 						issue_id = null;
 					}
-					updateDropdown(itemStr, j+1, issDropdowns, true, needBlankOption, true, issue_id);
+					updateDropdown(itemStr, j+1, issDropdowns, true, allowBlankIssue, true, issue_id);
 				}
 			}
 		}
@@ -546,11 +414,10 @@ function updateIssueDD(itemStr, project_id, projDropdowns, issDropdowns)
 function updateActDropdown(data, row, actDropdown){
 	
 	var enterIsueIdChk = document.getElementById("enter_issue_id");
-	var items = data.split('\n');
 	if(enterIsueIdChk && enterIsueIdChk.checked){
 		//set the project id
 		var projectIdHFs = document.getElementsByName("time_entry[][project_id]");
-		//var items = data.split('\n');
+		var items = data.split('\n');
 		var index;
 		if(items.length > 0){
 			index = items[0].indexOf('|');
@@ -560,10 +427,7 @@ function updateActDropdown(data, row, actDropdown){
 			}
 		}
 	}
-	var actId = getDefaultActId(data);
-	//var items = data.split('\n');
-	var needBlankOption = !(items.length-1 == 1 || actId != null);
-	updateDropdown(data, row, actDropdown, false, needBlankOption, true, actId);
+	updateDropdown(data, row, actDropdown, false, false, true,null);
 }
 
 function updateDropdown(itemStr, row, dropdown, showId, needBlankOption, skipFirst, selectedVal)
@@ -576,11 +440,7 @@ function updateDropdown(itemStr, row, dropdown, showId, needBlankOption, skipFir
 	}
 	dropdown[row-1].options.length = 0;
 	if(needBlankOption){
-		if (showId && allowBlankIssue){
-			dropdown[row-1].options[0] = new Option( "", "", false, false);
-		}else{
-			dropdown[row-1].options[0] = new Option( "---" + lblPleaseSelect + "---", "-1", false, false);
-		}
+		dropdown[row-1].options[0] = new Option( "", "", false, false); 
 	}
 	var i, index, val, text, start;
 	for(i=0; i < items.length-1; i++){
@@ -596,12 +456,12 @@ function updateDropdown(itemStr, row, dropdown, showId, needBlankOption, skipFir
 		if(index != -1){
 			val = items[i].substring(start, index);
 			text = items[i].substring(index+1);
-			//if(showId)
-			//{
+			if(showId)
+			{
 				text = text.split('|');
-			//}
+			}
 			dropdown[row-1].options[needBlankOption ? i+1 : i] = new Option( 
-				showId ? text[0] + ' #' + val + ': ' + text[1] : text[1], val, false, val == selectedVal);			
+				showId ? text[0] + ' #' + val + ': ' + text[1] : text, val, false, val == selectedVal);			
 			if(val == selectedVal){
 				selectedValSet = true;
 			}
@@ -766,7 +626,7 @@ function postDeleteRow(result, row, days, deleteMsg){
 			dayTotal = calculateTotal(days[i]);
 			updateDayTotal(days[i], dayTotal);
 			if(showWorkHeader){
-				updateRemainingHr(days[i], "");
+				updateRemainingHr(days[i]);
 			}
 		}
 	}else{
@@ -904,7 +764,7 @@ function validateTotal(hourField, day, maxHour){
 	}
 	updateDayTotal(day, dayTotal);
 	if(showWorkHeader){
-		updateRemainingHr(day, "");
+		updateRemainingHr(day);
 	}
 }
 
@@ -944,20 +804,20 @@ function calculateTotal(day){
 
 function validateHours(hoursValue,hoursDay){
 	var valid =false
-	hoursValue = myTrim(hoursValue);			
+	hoursValue = hoursValue.trim();			
 	var indexStr='',indexNextStr='',contcatStr='';					
 	var hours ='',mins='',timeValue='',concatvalue ='';
 	var total=0;
 	if (!isNaN(hoursValue))	{
 		hours = hoursValue;		
-	}else if (hoursValue.indexOf('.') > -1){
+	}else if (hoursValue.indexOf('.') ==1){
 		valid = checkStr(hoursValue,'.')				
-	}else if (hoursValue.indexOf(",") > -1){
+	}else if (hoursValue.indexOf(",")==1){
 		valid = checkStr(hoursValue,",")
 		if(!valid){				
 			hours = hoursValue.replace(",", ".");
 		}
-	}else if (hoursValue.indexOf(":") > -1){
+	}else if (hoursValue.indexOf(":")==1){
 		valid = checkStr(hoursValue,":")
 		if(!valid){
 			var val = hoursValue.split(":");
@@ -968,7 +828,7 @@ function validateHours(hoursValue,hoursDay){
 		for (i = 0; i < hoursValue.length-1; i++){ 
 			indexStr = hoursValue[i];
 			indexNextStr = hoursValue[i+1]									
-			if (!myTrim(indexNextStr) && indexStr && !contcatStr){									
+			if (!indexNextStr.trim() && indexStr && !contcatStr){									
 				if (isNaN(indexStr)){
 					valid = true
 					break;
@@ -1009,7 +869,7 @@ function validateHours(hoursValue,hoursDay){
 	}else if (contcatStr){
 		valid = true				
 	}
-	if (!myTrim(mins)){
+	if (!mins.trim()){
 		mins = concatvalue				
 	}
 	if (hours && mins){
@@ -1034,11 +894,11 @@ function checkStr(hoursValue,type){
 }
 function totalHours(hours,mins){		
 	var minhour =0,total=0;
-	if (!isNaN(hours) && myTrim(hours))
+	if (!isNaN(hours) && hours.trim())
 	{			
 		total = parseFloat(hours)
 	}
-	if (!isNaN(mins) && myTrim(mins))
+	if (!isNaN(mins) && mins.trim())
 	{
 		minhour = parseFloat(mins)/60;
 		total +=parseFloat(minhour)
@@ -1083,17 +943,18 @@ function updateTotal(increment){
 	totalSpan.innerHTML = total.toFixed(2);
 }
 
-function updateRemainingHr(day, element)
+function updateRemainingHr(day)
 {
-	
 	var issueTable = document.getElementById("issueTable");
 	var rowCount = issueTable.rows.length;
 	var totalRow = issueTable.rows[rowCount-2];
 	var rmTimeRow = issueTable.rows[rowCount-1];
 	var totTime,cell,rmTimeCell,dayTt,remainingTm = 0;
-	totTime = getTotalTime(day, element);
 	
-	var day_total = document.getElementById('day_total_'+day);	
+	totTime = getTotalTime(day);
+	
+	//cell = totalRow.cells[hStartIndex + day];
+	var day_total = document.getElementById('day_total_'+day);
 	dayTt = Number(day_total.innerHTML);	
 	rmTimeCell = rmTimeRow.cells[hStartIndex + day];
 	if(totTime >  0)
@@ -1103,34 +964,21 @@ function updateRemainingHr(day, element)
 	rmTimeCell.innerHTML = remainingTm.toFixed(2);
 }
 
-function getTotalTime(day, element)
+function getTotalTime(day)
 {
-	var minDiff = 0;
-
-	var attnDayEntriesCnt1 =  document.getElementById('attnDayEntriesCnt_'+day) != null ? document.getElementById('attnDayEntriesCnt_'+day).value : -1;
-	for(j = 0 ; j < attnDayEntriesCnt1 ; j++ )
-	{
-		minDiff  += getMinDiff(day, ['attnstarttime'+day+'_' + j,'attnendtime'+day+'_' + j, 'hoursdiff'+day+'_' + j]);
-	}
-	totTime = timeFormat(minDiff);
-	totTime = calculatebreakTimeNew(totTime, day, element);
-	if(element[0] == "start_"+day) 
-	{		
-		totTime = document.getElementById(element[2]).value;
-	}
-	
-	totTime = timeStringToFloat(totTime);
+	var minDiff = getMinDiff(day);			
+	//totTime = Math.round((minDiff/60)*100)/100;	
+	totTime = minDiff/60;
 	return totTime;
 }
 
 //Returns the minutes difference between start and end time
-function getMinDiff(day,element)
+function getMinDiff(day)
 {
 	var totTime,currDayTotal;
-	var st_min,end_min,minDiff,minadd;
-	var start, end;
-	st_min = getMinutes(day, element ? element[0] : 'start_');
-	end_min = getMinutes(day, element ? element[1] : 'end_');
+	var st_min,end_min,minDiff;
+	st_min = getMinutes(day,'start_');
+	end_min = getMinutes(day,'end_');
 	
 	if(st_min > end_min)
 	{
@@ -1143,165 +991,66 @@ function getMinDiff(day,element)
 			end_min += 1440;
 		}
 	}
-	minDiff = end_min - st_min;	
+	minDiff = end_min - st_min;
 	return minDiff;
 }
 
 //convert the hour to minutes 
 function getMinutes(day,str)
-{	
-	var fldVal,fldVal_min;	
-    var attnDayEntriesCnt1 =  document.getElementById('attnDayEntriesCnt_'+day) != null ? document.getElementById('attnDayEntriesCnt_'+day).value : -1;
-    if(str == "start_" || str == "end_")
-	{
-		fldVal =   document.getElementById(str+(day)).value ;		
-	}
-	else{
-		if(day != -1)
-		{
-			fldVal =   ( str ? (document.getElementById(str) != null ? document.getElementById(str).value : "") : "");
-		}
-		else{
-			fldVal = str;
-		}
-		
-	}		
-	fldVal = !fldVal ? '00:00' : fldVal;
-	
-	/*if(!fldVal)
-	{
-		fldVal = "00:00";
-	}*/	
+{
+	var fldVal,fldVal_min;
+	fldVal =  document.getElementById(str+day).value;		
 	fldVal = fldVal.split(":");
 	fldVal_min = (fldVal[0] * 60) + parseInt(fldVal[1]);	
 	return fldVal_min;
 }
 
 //Calculates and fills the total hr
-function updateTotalHr(day, element)
-{		
-	var issueTable = document.getElementById("issueTable");	
-	var tot_Hr = 0,tot_min = 0,totTime="";	
-	var minDiff = 0 ;
-	var attnDayEntriesCnt1 =  document.getElementById('attnDayEntriesCnt_'+day) != null ? document.getElementById('attnDayEntriesCnt_'+day).value : (document.getElementById('attnDayEntriesCnt') != null ? document.getElementById('attnDayEntriesCnt').value : -1);
-	if(!element)
-	 {
-		 for(j = 0 ; j < attnDayEntriesCnt1 ; j++ )
-		 {
-			var sval =  document.getElementById('attnstarttime'+day+'_' + j).value; 
-			var  eval1 = document.getElementById('attnendtime'+day+'_' + j).value ;
-			 minDiff  +=  sval && eval1 ? getMinDiff(day, ['attnstarttime'+day+'_' + j,'attnendtime'+day+'_' + j, 'hoursdiff'+day+'_' + j]) : 0 ;
-		 }
-		 
-	 }
-	 else{
-		  minDiff = getMinDiff(day, element);
-	 }
-	 
-	totTime = timeFormat(minDiff);
-	totTime = calculatebreakTimeNew(totTime, day, element);
-	if(element[0] == "start_"+day) 
-	{
-		var addtotal = document.getElementById(element[2]).value;			
-		var isnightshift = document.getElementById('nightshift') != null ?  document.getElementById('nightshift').value : false;
-		if(!isnightshift && clktot == 1)
-		{
-			addtotal = addtotal ? addtotal : "00:00:00";
-			totTime = MinutesDifferent(addtotal, totTime+":00", 1 );
-		}			
-		document.getElementById(element[2]).value = totTime ;
-		clktot = 1;
-	}
-	if(element && element[0] != "start_"+day )
-	{
-		document.getElementById(element[2]).value = timeStringToFloat(totTime);
-		minDiff = 0, totTime = 0;
-		for(j = 0 ; j < attnDayEntriesCnt1 ; j++ )
-		{
-		 minDiff  += getMinDiff(day, ['attnstarttime'+day+'_' + j,'attnendtime'+day+'_' + j, 'hoursdiff'+day+'_' + j]);
-		}
-		totTime = timeFormat(minDiff);
-		totTime = calculatebreakTimeNew(totTime, day, element);
-	}	
-	if(document.getElementById("grandTotal_"+day) != null)
-	{
-		var thours = 0.0;
-		for(k = 0 ; k < attnDayEntriesCnt1 ; k++ )
-		{
-			var addhours =  document.getElementById('hoursdiff'+day+'_' + k).value; 
-			thours	= Number((thours + (addhours  ? parseFloat(addhours) : 0.0)).toFixed(2)) ;		
-		}
-		document.getElementById("grandTotal_"+day).value = thours; //timeStringToFloat(totTime) ;
-		totTime = convertHoursToMin(thours);
-	}
-	if(element[3] != null && element[3])
-	{
-		totvalues = 0;
-		for(j = 0 ; j < attnDayEntriesCnt1 ; j++ )
-		{
-			totvalues = totvalues + parseFloat(document.getElementById("hoursdiff"+j).value);
-		}
-		document.getElementById("tothours").value = totvalues;
-	}
-	else{
-		var totTimeRow = issueTable.rows[3];
-		totHrCell = totTimeRow.cells[hStartIndex + day];
-		totHrCell.innerHTML = totTime + "     <a href='javascript:showclkDialog("+day+");'><img id='imgid' src='../plugin_assets/redmine_wktime/images/clockdetail.png' border=0 title=''/></a>";
-	}	
+function updateTotalHr(day)
+{	
+	var issueTable = document.getElementById("issueTable");
+	var totTimeRow = issueTable.rows[3];
+	var tot_Hr = 0,tot_min = 0,totTime="";
+	var minDiff = getMinDiff(day);
 	
-}
-
-function convertHoursToMin(thours)
-{
-	var sign = thours < 0 ? "-" : "";
-	var min = Math.floor(Math.abs(thours));
-	var sec = Math.floor((Math.abs(thours) * 60) % 60);
-	return sign + (min < 10 ? "0" : "") + min + ":" + (sec < 10 ? "0" : "") + sec;
+	/*if(minDiff > 0)
+	{	*/	
+		tot_Hr = parseInt(minDiff/60) ;
+		tot_min = minDiff%60;
+		if (tot_min > 0)
+		{ 
+			totTime = tot_Hr + ":" + tot_min;
+		}
+		else
+		{
+			totTime = tot_Hr + ":00";
+		};
+		
+		totHrCell = totTimeRow.cells[hStartIndex + day];		
+		totHrCell.innerHTML = totTime;
+	/*}*/
 }
 
 //Validates the start and end time
-function validateHr(hrFld,day, element)
+function validateHr(hrFld,day)
 {		
 	var hrFldID = hrFld.id;
-	if(document.getElementById(hrFldID) != null)
-	{
-		var hrVal = document.getElementById(hrFldID).value;	
-	}
-	else
-	{
-		hrVal = hrFld;
-	}
+	var hrVal = document.getElementById(hrFldID).value;	
+	
 	if(hrVal == "")
 	{
 		hrFld.value = "0:00";
 		hrVal = "0:00";
 	}
-	clkinTime = convertTimeToSec(document.getElementById(element[0]).value);
-	clkoutTime = convertTimeToSec(document.getElementById(element[1]).value);
+	
 	if(hrVal.match(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/) == null)
 	{
-		hrFld.value = hrFld.defaultValue;
 		alert("Not a valid time format");
 	}
-	else if((clkinTime > clkoutTime) || ( isNaN(clkinTime) && !isNaN(clkoutTime) ) )
-	{		 
-		var msg = ( isNaN(clkinTime) && !isNaN(clkoutTime) ) ? "Please enter Clock in." : "The Clock in time can't be greater then clock out.";
-		hrFld.value = hrFld.defaultValue;
-		alert(msg);
-	}
-	else if( !isNaN(clkinTime) && !isNaN(clkoutTime) )
+	else
 	{	
-		if(element[3] != null && element[3] )
-		{
-			updateTotalHr((day+1), element);
-			//updateRemainingHr((day+1), element);
-		}
-		else
-		{
-			updateTotalHr((day+1), element);
-			updateRemainingHr((day+1), element);			
-		}
-		
+		updateRemainingHr(day);	
+		updateTotalHr(day);
 	}
 }
 
@@ -1320,7 +1069,7 @@ function issueAutocomplete(txtissue,row){
         });
 }
 
-function validateMinhour(minHour,nonWorkingDay, minHoursPerWeek, maxHoursPerWeek){
+function validateMinhour(minHour,nonWorkingDay){
 	var valid=true;
 	var totalhr = document.getElementById("total_hours").innerHTML;
 	totalhr = Number(totalhr);
@@ -1328,38 +1077,23 @@ function validateMinhour(minHour,nonWorkingDay, minHoursPerWeek, maxHoursPerWeek
 	 if(isNaN(minHour)){
 		minHour=minHour.replace(',', '\.');
 	 }
-	 var msg ="";
-	 if (minHour!=0 && !isNaN(minHour)) { 	
+	 
+	 if (minHour!=0 && !isNaN(minHour)){	
 		 for (i=1;i<=7;i++){
 			var dayTotal= document.getElementById('day_total_'+i).innerHTML;
 			dayTotal = Number(dayTotal.replace(decSeparator, '\.'));
 			if(nonWorkingDay.indexOf(i.toString())== -1 || dayTotal > 0){				
 				
-				if (dayTotal< Number(minHour)){ 
-					msg = minHourAlertMsg;
-					valid=false;
+				if (dayTotal< Number(minHour)){
+					alert(minHourAlertMsg);
+					valid=false
 					break;
 				}
 			}
 		 }
 	 }
 	 
-	 if(minHoursPerWeek != 0 && !isNaN(minHoursPerWeek) && totalhr < minHoursPerWeek)
-	 {
-		msg += "\n" + minHourperWeekAlertMsg;
-		valid=false; 
-	 }
-	 if(maxHoursPerWeek != 0 && !isNaN(maxHoursPerWeek) && totalhr > maxHoursPerWeek)   
-	{
-		msg += "\n" + maxHourperWeekAlertMsg;
-		valid=false;
-	}
-	 
-	 if(!valid)
-	 {
-		 alert(msg);
-	 }
-	if(valid  && submissionack!=''){		
+	if(valid  && submissionack!=''){
 		valid= confirm(submissionack);
 	}
 	return valid;
@@ -1374,450 +1108,4 @@ function issueAssignUser()
 		issue_assign_user=1;
 	}
 	return issue_assign_user
-}
-
-function getDefaultActId(actStr)
-{
-	var index, actId = null;
-	index = actStr.indexOf('|true|', 0);
-	if(index != -1){
-		actStr = actStr.substring(0,index);
-		index = actStr.lastIndexOf('|');
-		actId = actStr.substring(index+1);
-	}
-	return actId
-}
-
-
-function showclkDialog(day)
-{
-	var i;
-	for(i = 0; i < 8 ; i++)
-	{
-		if(day == i)
-		{
-			$( "#clockInOut-dlg"+i ).dialog( "open" );
-			clkdialogid = i;
-		}		
-	}
-}
-/*
-function setClockInOut(strid,id) {	
-	if(nscount > 0)
-	{
-		id++;
-	}
-	var d = new Date();
-	var hh = d.getHours();
-	var mm = d.getMinutes();
-	id++;
-	elementhour = hh + ":" + mm;
-	elementend = hh + ":" + mm;	
-	document.getElementById(strid + '_' + id).value = elementhour;
-	if( strid == 'start' )
-	{
-	  document.getElementById('end' ).style="display:inline; !important";
-	  document.getElementById('start').style="display:none; !important";
-	  document.getElementById('end_' + id).value = "00:00";
-	}
-	else
-	{
-	  document.getElementById('end' ).style="display:none; !important";
-	  document.getElementById('start').style="display:inline; !important";
-	}
-	updateClockInOut(elementhour, strid, id, elementend );
-}
-
-function updateClockInOut(entrytime, strid, id, elementend){
-	var $this = $(this);		
-	var hours,start,end, hoursdiff,hiddenvalue,updateendvalue;
-	var nsdiff, nshiddenvalue, nshours;
-	var paramval;
-	updateendvalue = document.getElementById('nightshift') != null ?  document.getElementById('nightshift').value : false;
-	elementid = document.getElementById('hd'+strid + '_' + id).value;
-	start = document.getElementById('start_' + id).value;
-	var endval =  document.getElementById('end_' + id).value;
-	if(strid == "end")
-	{				
-		end =  elementend ;
-		if(updateendvalue == "true")
-		{
-			document.getElementById('end_' + id).value = "23:59";
-		}
-		hoursdiff = getMinDiff(id, "");
-		hoursdiff = timeFormat(hoursdiff);
-		hoursdiff = calculatebreakTimeNew(hoursdiff, id, "");
-		hours = timeStringToFloat(hoursdiff);
-	}	
-	if(updateendvalue == "true")
-	{
-		document.getElementById('end_' + (id+1)).value = elementend;
-		nsdiff = getMinDiff((id+1), "");
-		nsdiff = timeFormat(nsdiff);
-		nsdiff = calculatebreakTimeNew(nsdiff, (id+1), "");
-		nshours = timeStringToFloat(nsdiff);
-		
-	}
-	paramval = (strid == 'start' ? "|"+ id  : elementid ) + "|" +  (strid == 'end' ? start : entrytime) + "|" + (strid == 'end' ? entrytime : "") + "|" + (strid == 'end' ? hours : "") + "|" + nshours + "|" + (id+1) + ",";
-	updateAtt(paramval,false, strid, id);
-}
-
-function hiddenClockInOut(data,strid,id){
-	var array = data.split(',');
-	
-	var updateendvalue = document.getElementById('nightshift') != null ?  document.getElementById('nightshift').value : false;
-	var setvalue = false;
-	if(updateendvalue && nscount == 0)
-	{
-		document.getElementById('end_' + (id)).value = "23:59";
-		id++;
-		setvalue = true;
-	}
-	hdstart = document.getElementById('hdstart_' + id);
-	hdstart.value = strid == 'start' ? array[1] : (setvalue ? array[1] : array[0] ) ;
-	
-	hdend = document.getElementById('hdend_' + id);
-	hdend.value = strid == 'start' ? array[1] : (setvalue ? array[1] : array[0] ) ;
-	
-	elementid = document.getElementById(strid + '_' + id);
-	elementid.value = strid == 'start' ? array[2] :  (setvalue ? array[3] : array[2] )  ;
-	
-	if(strid == 'end')
-	{			
-	    updateTotalHr(id, ["start_"+id, "end_"+id,"hoursstart_"+id]);	
-		updateRemainingHr(id, ["start_"+id, "end_"+id,"hoursstart_"+id]);
-		if(updateendvalue == "true")
-		{
-			updateTotalHr((id-1), ["start_"+(id-1), "end_"+(id-1),"hoursstart_"+(id-1)]);	
-			updateRemainingHr((id-1), ["start_"+(id-1), "end_"+(id-1),"hoursstart_"+(id-1)]);
-		}
-		
-	}
-	
-	
-	if(document.getElementById('nightshift') != null && updateendvalue )
-	{
-		document.getElementById('nightshift').value = false;
-		nscount = 1;
-	}
-}
-*/
-function timeFormat(minutes)
-{
-	var tot_Hr1 = 0,tot_min1 = 0,totTime1 ="";
-	tot_Hr1 = parseInt(minutes/60) ;
-	tot_min1 = minutes%60;
-	if (tot_min1 > 0)
-	{ 
-		totTime1 = tot_Hr1 + ":" + tot_min1;
-	}
-	else
-	{
-		totTime1 = tot_Hr1 + ":00";
-	};
-	return totTime1;
-}
-/*
-function calculatebreakTime(totTime, day, element)
-{
-	
-	var startval, endval, startBT,endBT;
-	var breakTime = new Array();
-	var breakValue = new Array();	
-	var count = 0, count1 = 0, count2 = 0  ;
-	var i =0, j = 0;
-	var minusdiff = 0;
-	var isminusdiff = false, isdbtotal = false, istottime = false;
-	var oldstartval, oldendvalue;
-	var nsendvalue = document.getElementById('nightshift') != null ?  document.getElementById('nightshift').value : false;
-	var attnDayEntriesCnt1 =  document.getElementById('attnDayEntriesCnt_'+day) != null ? document.getElementById('attnDayEntriesCnt_'+day).value : -1;
-	startval = document.getElementById(element ? element[0] : 'start_'+day).value;
-	endval = document.getElementById(element ? element[1] : 'end_'+day).value;	
-	if(startval && endval)
-	{					
-		breakTime = document.getElementById('break_time').value;
-		breakTime = breakTime.split(" ");	
-		var startBTime = new Array() ,endBTime = new Array();
-		if(breakTime !='')
-		{
-			for(i= 0; i < breakTime.length ; i++)
-			{				
-				breakValue =  breakTime[i].split('|');
-				if(breakValue[0]&&breakValue[1]&&breakValue[2]&&breakValue[3])
-				{
-					startBTime[i]= breakValue[0] + ":" + breakValue[1] + ":00" ;
-					endBTime[i] = breakValue[2] + ":" + breakValue[3] + ":00";	
-				}								
-			}
-		}
-		
-		var diffbetween,diffbetween1, diffbetween4,diffbetween5;
-		var dbtotal , stdiff;				
-		startval += ":00";
-		endval += ":00";
-		for(j=0;j < startBTime.length ; j++)
-		{
-			startBT = dateCompare(startval,startBTime[j],0);
-			endBT = dateCompare(endval,endBTime[j],0);
-			// calculate time from greater & less then break time and inbetween clock in/out
-			if((startBT == -1 && endBT == 1  ) || ( startBT == 0 && endBT == 0) || (startBT == 1 && endBT == -1  ) || 
-			(startBT == -1 && endBT == 0) || (startBT == 0 && endBT == 1) )  //|| (st1 == -1 && ed1 == -1  ) st ed
-			{
-				var oldval = stdiff;				
-				//stdiff  = diff(startBTime[j],endBTime[j]);
-				stdiff = getMinDiff(-1, [startBTime[j],endBTime[j]]);
-				stdiff = timeFormat(stdiff);
-				if(count == 1)
-				{
-					stdiff = MinutesDifferent(oldval,stdiff,1);
-				}
-				count = 1;						
-				minusdiff = MinutesDifferent(totTime,stdiff,0);						
-				if (startBT == 1 && endBT == -1 ) 
-				{
-					minusdiff = "0:00";
-				}
-				isminusdiff = true;
-			}
-			else
-			{
-				if(count != 1)
-				{
-					//break time greater then clock out time					
-					diffbetween = dateCompare(endval,endBTime[j],1);
-					diffbetween1 = dateCompare(startBTime[j],endval,1);
-					if(diffbetween == 2 && diffbetween1 == 2)
-					{
-						count1 = 1;
-						dbtotal = MinutesDifferent(startBTime[j],startval, 0 );
-						isdbtotal = true;
-					}
-					else{
-						if(count1 != 1 )
-						{
-							//break time less then clock in time							
-							diffbetween4 = dateCompare(startval,startBTime[j],2);
-							diffbetween5 = dateCompare(startval,endBTime[j],2);
-							if(diffbetween4 == 4 && diffbetween5 == 0)
-							{
-								count2 = 1;
-								dbtotal = MinutesDifferent(endval, endBTime[j], 0 );
-								isdbtotal = true;
-							}
-							else
-							{								
-								if(count2 != 1)
-								{
-									istottime = true;
-								}							
-							}
-							
-							
-						}
-					}
-					
-				}
-				
-			}				
-		}				
-	}
-	if(isminusdiff)
-	{
-		return minusdiff;
-	}
-	else if(isdbtotal)
-	{
-		return dbtotal;
-	}
-	else{
-		return totTime;
-	}
-	
-}
-*/
-function MinutesDifferent(totTime, stdiff, variation)
-{
-	var minutessdiff;   // minusdiff
-	var seconds,seconds1;	
-	var arr,arr1;
-	arr = totTime.split(':');	
-	arr1 = stdiff.split(':');
-	seconds = arr[0]*3600+arr[1]*60;
-	seconds1 = arr1[0]*3600+arr1[1]*60;
-	
-	if(variation == 1)
-	{
-		minutessdiff = seconds + seconds1;
-	}
-	else{
-		minutessdiff = seconds - seconds1;
-	}	 
-	var d;
-	d = Number(minutessdiff);
-	var h = Math.floor(d / 3600);
-	var m = Math.floor(d % 3600 / 60);
-	minutessdiff =  ((h > 0 ? h + ":" + (m < 10 ? "0" : "") : "") + (h > 0 ? m : ("0:" + m)) );
-	return minutessdiff;
-}
-/*
-function dateCompare(time1,time2,s) {
-  var t1 = new Date();
-  var parts = time1.split(":");
-  t1.setHours(parts[0],parts[1],parts[2],0);
-  var t2 = new Date();
-  parts = time2.split(":");
-  t2.setHours(parts[0],parts[1],parts[2],0);  
-  // returns 1 if greater, -1 if less and 0 if the same  
-  if(s == 1)
-  {
-	if (t1.getTime()<t2.getTime()) return 2;
-	if (t1.getTime()<t2.getTime()) return 3;  
-  }
-  else if (s == 2)
-  {
-	  if (t1.getTime() > t2.getTime()) return 4;
-	  if (t1.getTime() > t2.getTime()) return 5;
-  }
-  else if (s == 3)
-  {
-	  if (t1.getTime() > t2.getTime()) return 6;
-	  
-  }
-  else
-  {
-	  if (t1.getTime()>t2.getTime()) return 1;
-      if (t1.getTime()<t2.getTime()) return -1;
-  }
-  return 0;
-}
-*/
-function timeStringToFloat(time) {
-  var hoursMinutes = time.split(/[.:]/);
-  var hours = parseInt(hoursMinutes[0], 10);
-  var minutes = hoursMinutes[1] ? parseInt(hoursMinutes[1], 10) : 0;
-  var originalval = hours + minutes / 60;
-  var result = Math.round(originalval*100)/100 
-  return result;
-}
-
-function updateAtt(param, diff,str,id)
-{
-	var datevalue = document.getElementById('startday').value;
-	var userid = document.getElementById('user_id').value;
-	var nightshift = false;
-	var date = false;
-	if(document.getElementById('nightshift') != null && !diff )
-	{
-		 nightshift = document.getElementById('nightshift').value;	
-	}	
-	$.ajax({
-	url: '/updateAttendance',
-	type: 'get',
-	data: {editvalue : param, startdate : datevalue, user_id : userid, nightshift : nightshift, isdate : date},
-	success: function(data){ if(diff){ newClockInOut(data); } },   
-	});
-}
-
-function newClockInOut(data)
-{
-	var savedata = data.split('|');
-	var columndata = new Array();
-	for(i=0;i<savedata.length; i++)
-	{
-		for(j=0;j< savedata[i].length ; j++)
-		  {
-			  columndata = savedata[i].split(',');
-		  }
-		
-	}	
-	var attnDayEntriesCnt =  document.getElementById('attnDayEntriesCnt_'+clkdialogid) != null ? document.getElementById('attnDayEntriesCnt_'+clkdialogid).value : -1;
-	if(columndata[1] == "00:00" && columndata[2] == "00:00")
-	{
-		for(i=0; i< attnDayEntriesCnt; i++)
-		{
-			var deleteid =  document.getElementById('attnEntriesId'+clkdialogid+"_"+i ).value;
-			if(deleteid == columndata[0] )
-			{
-				document.getElementById('attnEntriesId'+clkdialogid+"_"+i ).value = "";
-			}
-	    }		 
-	}
-	else{
-		if(document.getElementById('attnEntriesId'+clkdialogid+"_"+(attnDayEntriesCnt-1) ) != null)
-		{
-			document.getElementById('attnEntriesId'+clkdialogid+"_"+(attnDayEntriesCnt-1) ).value =  columndata[1];
-		}
-		 		
-	 }
-	if(document.getElementById('attnstarttime'+clkdialogid+"_"+(attnDayEntriesCnt-1) ) != null)
-		{
-			document.getElementById('start_' + clkdialogid).value = document.getElementById('attnstarttime'+clkdialogid+"_"+(attnDayEntriesCnt-1) ).value;
-			document.getElementById('end_' +clkdialogid).value = document.getElementById('attnendtime'+clkdialogid+"_"+(attnDayEntriesCnt-1) ).value;	
-		}
-	 
-}
-
-function calculatebreakTimeNew(totTime, day, element){
- var startval, endval, breakStart, breakEnd, startTime, endTime, workedHours;
- var breakTime = new Array();
- var breakValue = new Array();
- startval = document.getElementById(element ? element[0] : 'start_'+day).value;
- endval = document.getElementById(element ? element[1] : 'end_'+day).value;
- workedHours = convertTimeToSec(totTime);
- 
- if(startval && endval)
- {
-  startTime = convertTimeToSec(startval);
-  endTime = convertTimeToSec(endval);
-  breakTime = document.getElementById('break_time').value;
-  breakTime = breakTime.split(" "); 
-  var startBTime = new Array() ,endBTime = new Array();
-  if(breakTime !='')
-  {
-   for(var i= 0; i < breakTime.length ; i++)
-   {    
-    breakValue =  breakTime[i].split('|');
-    if(breakValue[0]&&breakValue[1]&&breakValue[2]&&breakValue[3])
-    {
-     breakStart = (breakValue[0]*3600)+(breakValue[1]*60);
-     breakEnd = (breakValue[2]*3600)+(breakValue[3]*60);
-     if(!(startTime>breakEnd || endTime < breakStart)){
-      if (startTime < breakStart){
-       if (endTime < breakEnd)
-        workedHours = workedHours - (endTime-breakStart);
-       else
-        workedHours = workedHours - (breakEnd-breakStart);
-      }
-      else{
-       if (endTime > breakEnd)
-        workedHours = workedHours - (breakEnd-startTime);
-       else
-        workedHours = 0;
-      }
-     }
-     //startBTime[i]= breakValue[0] + ":" + breakValue[1] + ":00" ;
-     //endBTime[i] = breakValue[2] + ":" + breakValue[3] + ":00"; 
-    }        
-   }
-  }
- }
- return convertSecToTime(workedHours);
-}
-
-function convertTimeToSec(timeval)
-{
- var timeArr = timeval.split(':');
- seconds = (timeArr[0]*3600)+(timeArr[1]*60);
- return seconds;
-}
-
-
-
-function convertSecToTime(seconds)
-{
- var d = Number(seconds);
- var h = Math.floor(d / 3600);
- var m = Math.floor(d % 3600 / 60);
- var timeVal =  ((h > 0 ? h + ":" + (m < 10 ? "0" : "") : "") + (h > 0 ? m : ("0:" + m)) );
- return timeVal;
 }

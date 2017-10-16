@@ -5,12 +5,12 @@
 <%= render :partial => 'date_range' %>
 <% end %>
 <div class="total-hours">
-<p><%= l(:label_total) %>: <%= "#{@total_hours == 0.0 ? '' : '$'}" %>&nbsp;<%= html_hours("%.2f" % @total_hours) %></p>
+<p><%= l(:label_total) %>:&nbsp;<%= html_hours("%.2f" % @total_hours) %></p>
 </div>
 
 <% unless @entries.empty? %>
 <%= render :partial => 'report_list', :locals => { :entries => @entries }%>
-<span class="pagination"><%= pagination_links_full @entry_pages, @entry_count %></span>
+<p class="pagination"><%= pagination_links_full @entry_pages, @entry_count %></p>
 
 <% other_formats_links do |f| %>
   <%= f.link_to 'Atom', :url => params.merge({:issue_id => @issue, :key => User.current.rss_key}) %>

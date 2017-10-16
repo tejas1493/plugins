@@ -1,20 +1,3 @@
-# ERPmine - ERP for service industry
-# Copyright (C) 2011-2016  Adhi software pvt ltd
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License
-# as published by the Free Software Foundation; either version 2
-# of the License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
-
 class WkexpenseController < WktimeController	
   unloadable  
   
@@ -49,7 +32,7 @@ class WkexpenseController < WktimeController
   end
   
   def getUnit(entry)
-	entry.nil? ? number_currency_format_unit : entry[:currency]
+	entry.nil? ? l('number.currency.format.unit') : entry[:currency]
   end
   
   def getUnitDDHTML
@@ -83,38 +66,9 @@ class WkexpenseController < WktimeController
 	 @query = WkExpenseEntryQuery.build_from_params(params, :project => @project, :name => '_')
 	 sort_init(@query.sort_criteria.empty? ? [['spent_on', 'desc']] : @query.sort_criteria)
     sort_update(@query.sortable_columns)
-	set_managed_projects
-	projectid = -1
-	ismanagedProject = false
-	currentProject = Project.where(:identifier => params[:project_id])
-	if !currentProject.blank?
-		projectid = currentProject[0].id	
-	end
-	projectids = ''
-	@manage_view_spenttime_projects.each{ |manageproject| 
-		if projectids !=''
-			projectids += ', '
-		end
-		projectids += manageproject.id.to_s
-		if projectid == manageproject.id 
-			ismanagedProject = true
-		end	
-	}
-	if (!@manage_view_spenttime_projects.blank?  && ismanagedProject) || isAccountUser 
-		scope = expense_entry_scope(:order => sort_clause).
-		includes(:project, :user, :issue).
-		preload(:issue => [:project, :tracker, :status, :assigned_to, :priority])
-	else
-		cond =''
-		if projectid > 0  
-			cond = "user_id = #{User.current.id} and project_id in (#{projectid}) "
-		elsif !@manage_view_spenttime_projects.blank?
-			cond = "project_id in (#{projectids}) "
-		else
-			cond = "user_id = #{User.current.id}"
-		end
-		scope = WkExpenseEntry.where(cond)
-	end	
+    scope = expense_entry_scope(:order => sort_clause).
+      includes(:project, :user, :issue).
+      preload(:issue => [:project, :tracker, :status, :assigned_to, :priority])
     respond_to do |format|
       format.html {
         @entry_count = scope.count
@@ -154,39 +108,16 @@ class WkexpenseController < WktimeController
   def deleteEntry
 	respond_to do |format|
 		format.html {	
-			if delete(params[:id])
-				flash[:notice] = l(:notice_successful_delete)
-			else
-				flash[:error] = l(:error_expense_entry_delete)
-			end
+			delete(params[:id])
+			flash[:notice] = l(:notice_successful_delete)
 			redirect_to :action => 'reportdetail', :project_id => params[:project]
 		} 		
 	end
   end
  
-  def textfield_size
-	6
-  end
-	
-  def showClockInOut
-	false
-  end
-  
-  def getNewCustomField
-	nil
-  end
-  
-  def getTELabel
-	l(:label_wk_expensesheet)
-  end
-  
-  def maxHourPerWeek
-	0
-  end
-	
-  def minHourPerWeek
-	0
-  end
+	def textfield_size
+	    6
+	end
 private
   def getSpecificField
 	"amount"
@@ -196,35 +127,33 @@ private
 	["#{Wkexpense.table_name}", "#{WkExpenseEntry.table_name}"]
   end
   
-  def getQuery(teQuery, ids, from, to, status)
-		spField = getSpecificField()
-		dtRangeForUsrSqlStr =  "(" + getAllWeekSql(from, to) + ") tmp1"			
-		teSqlStr = "(" + teQuery + ") tmp2"
-		query = "select tmp3.user_id as user_id , tmp3.spent_on as spent_on, tmp3.#{spField} as #{spField}, tmp3.status as status, tmp3.status_updater as status_updater, tmp3.created_on as created_on, tmp3.currency as currency from (select tmp1.id as user_id, tmp1.created_on, tmp1.selected_date as spent_on, " +
+  def findBySql(selectStr,sqlStr,wkSelectStr,wkSqlStr, status, ids) 
+	spField = getSpecificField()
+	dtRangeForUsrSqlStr =  "(" + getAllWeekSql(@from, @to) + ") tmp1"			
+	teSqlStr = "(" + wkSelectStr + " ,exp.currency" + sqlStr + " inner join wk_expense_entries exp on v1.id = exp.id " + wkSqlStr + ") tmp2"			
+	query = "select tmp3.user_id, tmp3.spent_on, tmp3.#{spField}, tmp3.status, tmp3.status_updater, tmp3.created_on, tmp3.currency from (select tmp1.id as user_id, tmp1.created_on, tmp1.selected_date as spent_on, " +
 				"case when tmp2.#{spField} is null then 0 else tmp2.#{spField} end as #{spField}, " +
 				"case when tmp2.status is null then 'e' else tmp2.status end as status, tmp2.currency, tmp2.status_updater from "
-		query = query + dtRangeForUsrSqlStr + " left join " + teSqlStr
-		query = query + " on tmp1.id = tmp2.user_id and tmp1.selected_date = tmp2.spent_on where tmp1.id in (#{ids}) ) tmp3 "
-		query = query + " left outer join (select min( #{getDateSqlString('t.spent_on')} ) as min_spent_on, t.user_id as usrid from wk_expense_entries t, users u "
-		query = query + " where u.id = t.user_id and u.id in (#{ids}) group by t.user_id ) vw on vw.usrid = tmp3.user_id "
-		query = query + getWhereCond(status)
-	end
-  
-  def findBySql(query) 
-	spField = getSpecificField()
+	query = query + dtRangeForUsrSqlStr + " left join " + teSqlStr
+	query = query + " on tmp1.id = tmp2.user_id and tmp1.selected_date = tmp2.spent_on where tmp1.id in (#{ids}) ) tmp3 "
+	query = query + " left outer join (select min( #{getDateSqlString('t.spent_on')} ) as min_spent_on, t.user_id as usrid from wk_expense_entries t, users u "
+	query = query + " where u.id = t.user_id and u.id in (#{ids}) group by t.user_id ) vw on vw.usrid = tmp3.user_id "
+	query = query + getWhereCond(status)
+	query = query + " order by tmp3.spent_on desc, tmp3.user_id "
+	
 	result = WkExpenseEntry.find_by_sql("select count(*) as id from (" + query + ") as v2")
 	@entry_count = result[0].id	
 	setLimitAndOffset()	
 	rangeStr = formPaginationCondition()
-	@entries = WkExpenseEntry.find_by_sql(query + " order by tmp3.spent_on desc, tmp3.user_id " + rangeStr)
-	@unit = @entries.blank? ? number_currency_format_unit : @entries[0][:currency]
+	@entries = WkExpenseEntry.find_by_sql(query + rangeStr)
+	@unit = @entries.blank? ? l('number.currency.format.unit') : @entries[0][:currency]
 	result = WkExpenseEntry.find_by_sql("select sum(v2." + spField + ") as " + spField + " from (" + query + ") as v2")	
 	@total_hours = result[0].amount
   end
   
-  def getTEAllTimeRange(ids)	
-	teQuery = "select v.startday as startday from (select #{getDateSqlString('t.spent_on')} as startday " +
-				"from wk_expense_entries t where user_id in (#{ids})) v group by v.startday order by v.startday"
+  def getTEAllTimeRange(ids)
+	teQuery = "select #{getDateSqlString('t.spent_on')} as startday " +
+			"from wk_expense_entries t where user_id in (#{ids}) group by startday order by startday"
 	teResult = WkExpenseEntry.find_by_sql(teQuery)
   end
   
@@ -241,6 +170,10 @@ private
 	teEntry.currency = getUnit(entry)
   end
   
+  def getNewCustomField
+	nil
+  end
+  
   def getWkEntity
 	Wkexpense.new 
   end
@@ -254,29 +187,7 @@ private
   end 
   
   def delete(ids)
-	#WkExpenseEntry.delete(ids)
-	errMsg = false
-	@expense_entries = WkExpenseEntry.where(:id => ids)#WkExpenseEntry.find_by_sql("SELECT * FROM wk_expense_entries w where id = #{ids} ;")
-	destroyed = WkExpenseEntry.transaction do
-		@expense_entries.each do |t|
-			status = getExpenseEntryStatus(t.spent_on, t.user_id)
-			if !status.blank? && ('a' == status || 's' == status || 'l' == status)					
-				 errMsg = false 
-			else
-				errMsg = true
-				WkExpenseEntry.delete(ids)
-				break
-			end		
-		end
-	end
-	errMsg
-  end
-  
-  def getExpenseEntryStatus(spent_on, user_id)
-		start_day = getStartDay(spent_on)
-		result = Wkexpense.where(['begin_date = ? AND user_id = ?', start_day, user_id])
-		result = result[0].blank? ? 'n' : result[0].status
-		return 	result	  
+	WkExpenseEntry.delete(ids)
   end
   
   def findTEEntries(ids)
@@ -325,35 +236,5 @@ private
       scope = scope.on_issue(@issue)
     end
     scope
-  end
-  
-  def findTEEntryBySql(query)
-	WkExpenseEntry.find_by_sql(query)
-  end
-  
-  def formQuery(wkSelectStr, sqlStr, wkSqlStr)
-	query =  wkSelectStr + " ,exp.currency" + sqlStr + " inner join wk_expense_entries exp on v1.id = exp.id " + wkSqlStr
-  end
-  
-  def getUserCFFromSession
-	#return user custom field filters from session
-	session[:wkexpense][:filters]
-  end
-  
-  def getUserIdFromSession
-	#return user_id from session
-	session[:wkexpense][:user_id]
-  end
-  
-  def getStatusFromSession
-	session[:wkexpense][:status]
-  end
-  
-  def setUserIdsInSession(ids)
-	session[:wkexpense][:all_user_ids] = ids
-  end
-  
-  def getUserIdsFromSession
-	session[:wkexpense][:all_user_ids]
   end
 end
